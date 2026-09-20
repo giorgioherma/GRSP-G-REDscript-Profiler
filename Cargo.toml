@@ -1,0 +1,18 @@
+[package]
+name = "redscript-profiler-alpha"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+parking_lot = "0.12"
+static_assertions = "1"
+red4ext-rs = { git = "https://github.com/jac3km4/red4ext-rs", rev = "c44146c" }
+
+[profile.release]
+codegen-units = 1
+panic = "abort"
+lto = true
+strip = true

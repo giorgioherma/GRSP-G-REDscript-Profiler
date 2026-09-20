@@ -1,0 +1,13 @@
+{
+  "name": "RSP Alpha 0.1 Runtime Callsite Profiler",
+  "version": "0.1.0",
+  "red4ext_rs_rev": "c44146c",
+  "bind_function_hash": 777921665,
+  "measurement": "inclusive callsite timing around InvokeStatic/InvokeVirtual for r6/scripts callers",
+  "outputs": [
+    "RSP_Alpha_Status.txt",
+    "RSP_Alpha_FunctionMap.csv",
+    "RSP_Alpha_CallSites.csv"
+  ],
+  "next_if_stable": "Alpha 0.2 direct pure-script function hook for inclusive/self function timing"
+}

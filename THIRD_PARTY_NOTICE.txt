@@ -1,0 +1,10 @@
+Third-party technical basis / attribution
+
+redscript-dap
+Copyright (c) 2024 jekky
+License: MIT
+Repository: https://github.com/jac3km4/redscript-dap
+
+This alpha reuses the documented/reverse-engineered FunctionInfo and
+SourceFileInfo layouts and follows the bind/opcode hook architecture from
+redscript-dap. It is not redscript-dap and does not include its debugger server.
