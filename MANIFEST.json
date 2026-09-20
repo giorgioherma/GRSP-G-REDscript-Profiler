@@ -1,23 +1,32 @@
 {
-  "name": "RSP Alpha 0.3 Runtime Mapping Profiler",
-  "version": "0.3.0",
+  "name": "RSP Alpha 0.3.1 Framework Mapping Profiler",
+  "version": "0.3.1",
   "red4ext_rs_rev": "c44146c",
   "bind_function_hash": 777921665,
   "default_state": "PAUSED",
   "hotkey": "F11",
   "hotkey_poll_ms": 2,
-  "audio_signals": {
-    "start": "1 high beep",
-    "stop": "2 low beeps"
-  },
-  "timing": "QPC per observed call edge",
-  "frame_boundary": "RED4ext Running game-state OnUpdate",
-  "measurement": "InvokeStatic/InvokeVirtual call-edge timing for r6/scripts callers inside explicit F11 capture window",
-  "nested_timing": "inclusive minus nested instrumented child call-edge time",
-  "overhead_strategy": "thread-local per-frame aggregation; global merge once per game frame; sparse global spike/hot-path writes only",
+  "measurement": "exact observed InvokeStatic/InvokeVirtual callsite timing for r6/scripts callers inside explicit F11 capture window",
   "sampling": false,
+  "timing_clock": "QueryPerformanceCounter",
+  "multithread_strategy": "thread-owned leaked shards + STOPPING quiescence barrier + post-stop merge",
+  "root_barrier": "one ACTIVE_ROOTS atomic increment/decrement per observed root chain, not per nested call",
+  "frame_strategy": "Running-state callback with bool-return compatibility shim on pinned red4ext-rs revision",
   "spike_threshold_ms": 1.0,
-  "outputs": [
+  "stable_ids": {
+    "function_prefix": "RSPF-",
+    "callsite_prefix": "RSPC-",
+    "hash": "FNV-1a 64-bit over source/function/callsite identity"
+  },
+  "new_framework_design_outputs": [
+    "RSP_Alpha_Threads.csv",
+    "RSP_Alpha_Roots.csv",
+    "RSP_Alpha_CrossModEdges.csv",
+    "RSP_Alpha_TargetDomains.csv",
+    "RSP_Alpha_OwnerDomains.csv",
+    "RSP_Alpha_FrameworkSignals.csv"
+  ],
+  "all_outputs": [
     "RSP_Alpha_Status.txt",
     "RSP_Alpha_Capture.csv",
     "RSP_Alpha_Markers.csv",
@@ -28,17 +37,29 @@
     "RSP_Alpha_SharedTargets.csv",
     "RSP_Alpha_Edges.csv",
     "RSP_Alpha_Cadence.csv",
-    "RSP_Alpha_WrapperChains.csv",
     "RSP_Alpha_Frames.csv",
     "RSP_Alpha_FrameOwners.csv",
     "RSP_Alpha_Spikes.csv",
     "RSP_Alpha_HotPaths.csv",
-    "RSP_Alpha_WorkMap.csv"
+    "RSP_Alpha_WrapperChains.csv",
+    "RSP_Alpha_WorkMap.csv",
+    "RSP_Alpha_Threads.csv",
+    "RSP_Alpha_Roots.csv",
+    "RSP_Alpha_CrossModEdges.csv",
+    "RSP_Alpha_TargetDomains.csv",
+    "RSP_Alpha_OwnerDomains.csv",
+    "RSP_Alpha_FrameworkSignals.csv"
   ],
-  "csv_policy": "no disk writes while recording; export after stop and final partial-frame flush",
-  "known_limitations": [
-    "exclusive_instrumented_ms is not yet guaranteed full VM function self-time",
-    "virtual target concrete implementation ownership is unresolved",
-    "thread-local final-frame flush assumes normal Redscript hook activity is on the Running/game thread; observed thread count is exported to validate this"
+  "trust_gates": [
+    "shard_merge_ok=true",
+    "merged_shards==observed_threads",
+    "frame_quality=GOOD",
+    "observed_calls returns to same order as Alpha 0.2 baseline"
+  ],
+  "limitations": [
+    "not every REDscript intrinsic/VM instruction is observed",
+    "exclusive_instrumented_ms is instrumented-edge exclusive time, not guaranteed full VM self time",
+    "virtual targets are not guaranteed concrete implementation ownership",
+    "target-domain and framework-signal classifications are heuristics"
   ]
 }

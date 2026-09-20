@@ -1,411 +1,357 @@
-# RSP Alpha 0.3 — Runtime Mapping Profiler
+# RSP Alpha 0.3.1 — Framework Mapping / Multithread Fix
 
-Alpha 0.3 changes the goal from “show me large Redscript activity” to **“map the architecture of Redscript runtime work.”**
+Alpha 0.3 showed the right profiler architecture but exposed two problems in the first mapping pass:
 
-It keeps the proven Alpha 0.2 bind/source mapping and `InvokeStatic` / `InvokeVirtual` hooks, but adds controlled frame-aware nested profiling, cadence analysis, owner/function/target maps, sparse hot paths, and a first automatic work classification.
+1. REDscript activity was observed on multiple hook threads, while Alpha 0.3 only flushed the TLS belonging to the thread that received the Running-state callback.
+2. The Running-state callback registered successfully but did not continue reliably with the old `red4ext-rs` callback ABI used by the pinned revision.
+
+Alpha 0.3.1 fixes those before any Redscript optimization framework is designed.
+
+## What this build is for
+
+This is a **mapping profiler**, not yet an optimizer.
+
+The objective is to answer:
+
+- which mods are permanently active vs event/burst driven;
+- which observed roots explode into large descendant call trees;
+- which callsites behave like polling, repeated same-frame work, or inner loops;
+- which targets are redundantly queried by many different mods;
+- which runtime domains (blackboards, UI, mappins, equipment, combat, etc.) dominate traffic;
+- where mod-to-mod nested call transitions occur;
+- how deep wrapper chains become;
+- how work is distributed across REDscript hook threads;
+- which common primitives a future shared `G-RedRuntime` should actually provide.
+
+The framework should be designed **from this evidence**, not guessed in advance.
+
+---
 
 ## Capture control
 
-The profiler still starts **PAUSED**.
+The profiler starts **PAUSED**.
 
-Hard-coded key: **F11**.
+`F11` is still the hardcoded shared key:
 
-```text
-F11 #1
-  -> clear old runtime measurement
-  -> START capture
-  -> one HIGH beep
+- first press: fresh capture begins;
+- second press: capture window closes immediately, existing profiled roots drain, all thread shards are merged, then CSVs are written;
+- third press: another fresh capture.
 
-F11 #2
-  -> STOP capture immediately
-  -> two LOW beeps
-  -> final partial-frame flush
-  -> write CSVs
+The DLL polls F11 rather than registering an exclusive Windows hotkey, so CapFrameX may use the same F11 press.
 
-F11 #3
-  -> fresh capture
+Audible confirmation:
+
+- START = one high beep;
+- STOP = two low beeps.
+
+There are no periodic CSV writes during the measurement window.
+
+---
+
+## Runtime-overhead policy
+
+Accuracy remains the priority.
+
+Alpha 0.3.1 still performs QPC timing for every observed profiled `InvokeStatic` / `InvokeVirtual` call. It does **not** sample calls and does not extrapolate counts.
+
+The hot path avoids the Alpha 0.2 global aggregation lock. Each observed thread writes to its own leaked, thread-owned shard. Global aggregation occurs after STOP, when:
+
+1. state becomes `STOPPING`;
+2. no new profiled roots may enter;
+3. already-running roots are allowed to finish;
+4. `ACTIVE_ROOTS` reaches zero;
+5. all registered shards are quiescent and are merged once.
+
+This retains exact observed call counts/timings while keeping the per-call path local.
+
+Calls that cross the requested STOP boundary are not added as completed call measurements if they finish after the stop QPC. Nested calls that completed before STOP remain valid.
+
+---
+
+## Frame callback fix
+
+The project deliberately remains pinned to:
+
+```toml
+red4ext-rs rev = c44146c
 ```
 
-The key is polled rather than registered exclusively, so CapFrameX can use **the same F11 press**.
+because that is the revision already proven with our bind/opcode layouts.
 
-No CSV disk writes happen during the capture.
+That old Rust binding models game-state callbacks as void-returning, while the current RED4ext game-state ABI uses a bool-returning `OnUpdate`. Alpha 0.3.1 installs a compatibility callback that returns `false`, keeping `Running::OnUpdate` alive while preserving the known VM-hook revision.
 
-## Important Alpha 0.3 timing change
-
-Alpha 0.2 used a control-thread capture clock. Alpha 0.3 uses Windows **QueryPerformanceCounter (QPC)** for per-call timing and capture-relative timestamps.
-
-Alpha 0.3 also registers a RED4ext **Running game-state `OnUpdate` listener**, which is used as the profiler's actual game-frame boundary. Every recorded call is associated with the current game frame.
-
-This gives us a much stronger CapFrameX correlation surface:
+After every capture check:
 
 ```text
-frame_id
-capture_ms
-calls in frame
-owners in frame
-call depth
-exclusive instrumented time
-largest call
-spike count
+RSP_Alpha_Capture.csv
 ```
 
-## Profiler-overhead work
-
-Alpha 0.2 updated a shared locked `HashMap` on every observed invocation. With hundreds of thousands of observed calls per second, that is expensive.
-
-Alpha 0.3 removes that design.
-
-### Alpha 0.3 hot path
+Important fields:
 
 ```text
-Invoke hook
-  -> one capture-state atomic check
-  -> thread-local caller eligibility cache
-  -> QPC start
-  -> push small thread-local stack entry
-  -> original opcode handler
-  -> QPC end
-  -> pop stack
-  -> update THREAD-LOCAL per-frame HashMap
+frame_callbacks
+frame_quality
+observed_threads
+merged_shards
+shard_merge_ok
+stop_drain_ms
 ```
 
-Global aggregate maps are merged **once per game frame**, not once per call.
-
-Global locks remain only for sparse/rare operations such as:
-
-- first-seen function/source metadata
-- first-seen virtual target name per thread
-- >=1 ms sparse spike/hot-path capture
-- once-per-frame aggregate merge
-
-This is intended to lower profiler overhead **without sampling away calls or dropping per-call duration measurement**.
-
-We deliberately did **not** switch to sampling because that would weaken the exact call-count/cadence data we want for optimization planning.
-
-## Nested timing: what “exclusive” means
-
-Alpha 0.3 maintains a thread-local nested stack around the already-proven Invoke hooks.
-
-For an observed call edge:
+For a trustworthy mapping capture we want:
 
 ```text
-inclusive = edge exit - edge entry
-exclusive_instrumented = inclusive - time spent in nested instrumented child edges
+shard_merge_ok = true
+merged_shards == observed_threads
+frame_quality = GOOD
 ```
 
-Example:
+`frame_callbacks` should be in the same general order as the rendered/game frames for the capture duration, not `1` as in the broken Alpha 0.3 baseline.
+
+---
+
+## New framework-design signals
+
+### Root amplification
+
+A **root** is the start of an observed mod-origin call chain when the profiler's instrumented stack is empty.
+
+For every root Alpha 0.3.1 tracks:
 
 ```text
-A -> B        20 ms inclusive
-    B -> C    17 ms inclusive
-
-A -> B exclusive_instrumented ~= 3 ms
+root calls
+root calls/sec
+root active frames
+total root inclusive time
+average root duration
+max root duration
+total observed descendant calls
+average descendants per root
+max descendants from one root
 ```
 
-This removes a large amount of nested double-counting.
+This distinguishes a root that cheaply checks state from a root that detonates thousands of downstream calls.
 
-However, **this is not yet guaranteed full VM function self-time**. Calls made from uninstrumented/base-script paths and native/intrinsic work can remain inside the exclusive edge. The CSV deliberately calls the field `exclusive_instrumented_ms` rather than claiming exact function self-time.
-
-We are still avoiding `CScript_RunPureScript` in this alpha because CET also hooks that execution path. The current hooks have already survived very large captures and are our safer foundation.
-
-## New runtime maps
-
-Alpha 0.3 exports:
+Output:
 
 ```text
+RSP_Alpha_Roots.csv
+```
+
+### Cross-mod nested edges
+
+When an observed nested call transitions from one source owner to another source owner, Alpha 0.3.1 records that edge.
+
+Example concept:
+
+```text
+Mod A wrapper
+    -> Mod B wrapper
+        -> Mod C helper
+```
+
+Output:
+
+```text
+RSP_Alpha_CrossModEdges.csv
+```
+
+This is intended to reveal wrapper ecosystems and mod-to-mod chatter that may benefit from shared state or event bridges.
+
+### Thread map
+
+Output:
+
+```text
+RSP_Alpha_Threads.csv
+```
+
+Per observed thread it reports calls, owners, functions, root calls, cross-mod edge traffic, inclusive/exclusive instrumented totals, and first/last activity.
+
+This tells us whether a future shared runtime service needs to be thread-safe or whether a domain is effectively confined to one execution thread.
+
+### Target domains
+
+Target names are grouped **heuristically at export time** into domains such as:
+
+```text
+BLACKBOARD
+STATUS_EFFECT
+EQUIPMENT_INVENTORY
+QUEST_JOURNAL_FACTS
+MAP_MAPPIN
+UI_HUD
+VEHICLE
+COMBAT
+NPC_AI
+PLAYER_ENTITY
+TIME_SCHEDULING
+INPUT_ACTION
+AUDIO
+OTHER
+```
+
+Outputs:
+
+```text
+RSP_Alpha_TargetDomains.csv
+RSP_Alpha_OwnerDomains.csv
+```
+
+These classifications are triage aids, not semantic truth. They add zero per-call runtime work because classification occurs only after STOP.
+
+### Framework signals
+
+`RSP_Alpha_FrameworkSignals.csv` combines owner-level evidence into candidate signals such as:
+
+```text
+HIGH_DUTY
+AMPLIFICATION
+SHARED_QUERY_CONSUMER
+WRAPPER_HEAVY
+CROSS_MOD_CHATTER
+MULTITHREAD
+```
+
+and candidate primitives such as:
+
+```text
+EVENT_OR_DIRTY_GATE
+CACHE_INDEX_ALGORITHM
+SHARED_STATE_SERVICE
+WRAPPER_CONSOLIDATION
+EVENT_BRIDGE_OR_SHARED_STATE
+THREAD_SAFE_CORE_SERVICE
+```
+
+These are deliberately labelled as signals. They do not automatically prove that a mod should be rewritten in that way; source inspection still follows profiling.
+
+---
+
+## Stable IDs for multi-scenario captures
+
+Raw runtime function pointers are not suitable for joining separate game sessions.
+
+Alpha 0.3.1 adds stable FNV-1a-derived IDs based on source/function/callsite identity:
+
+```text
+RSPF-...   stable function ID
+RSPC-...   stable callsite ID
+```
+
+They appear in key output tables so later captures such as idle / world / combat / UI can be joined even if runtime pointers change.
+
+An unresolved static target can still reduce stability because the target may fall back to a pointer representation; the resolution column remains authoritative.
+
+---
+
+## Outputs
+
+After STOP:
+
+```text
+red4ext\plugins\redscript_profiler_alpha\RESULTS\
+
 RSP_Alpha_Status.txt
+
 RSP_Alpha_Capture.csv
 RSP_Alpha_Markers.csv
 RSP_Alpha_FunctionMap.csv
+
 RSP_Alpha_CallSites.csv
 RSP_Alpha_ByOwner.csv
 RSP_Alpha_ByFunction.csv
 RSP_Alpha_SharedTargets.csv
 RSP_Alpha_Edges.csv
 RSP_Alpha_Cadence.csv
-RSP_Alpha_WrapperChains.csv
+
 RSP_Alpha_Frames.csv
 RSP_Alpha_FrameOwners.csv
+
 RSP_Alpha_Spikes.csv
 RSP_Alpha_HotPaths.csv
+RSP_Alpha_WrapperChains.csv
 RSP_Alpha_WorkMap.csv
+
+RSP_Alpha_Threads.csv
+RSP_Alpha_Roots.csv
+RSP_Alpha_CrossModEdges.csv
+RSP_Alpha_TargetDomains.csv
+RSP_Alpha_OwnerDomains.csv
+RSP_Alpha_FrameworkSignals.csv
 ```
 
-### RSP_Alpha_Capture.csv
+---
 
-Capture identity and integrity data:
+## Measurement interpretation
 
-- capture start / stop Unix time
-- QPC start / stop / frequency
-- duration
-- number of mapped functions
-- observed Redscript hook thread count
-- frame count
-- call count
-- row counts
-- dropped sparse event counts
-- final partial-frame flush status
+This profiler observes `InvokeStatic` / `InvokeVirtual` activity whose caller is mapped to `r6\scripts` mod source.
 
-### RSP_Alpha_Markers.csv
+It is **not** a count of every REDscript VM instruction or intrinsic operation.
 
-Explicit START / STOP markers for synchronization.
+`exclusive_instrumented_ms` means:
 
 ```text
-event,qpc,capture_ms,unix_ms
-START,...,0.000,...
-STOP,...,131940.123,...
+inclusive observed call time
+- time spent in nested calls also observed by this profiler
 ```
 
-### RSP_Alpha_FunctionMap.csv
+It is more useful than raw inclusive totals but is **not yet guaranteed full VM function self-time**, because uninstrumented/base/native work can remain inside the interval.
 
-Runtime function pointer -> owner/source/function mapping.
+Virtual targets still use method-name resolution rather than guaranteed concrete runtime implementation ownership. `target_resolution` must be respected.
 
-### RSP_Alpha_CallSites.csv
+---
 
-Detailed callsite aggregate:
+## First Alpha 0.3.1 test
 
-- owner/source/function/line
-- static vs virtual
-- target
-- direct vs unresolved target resolution
-- calls / calls per second
-- observed inclusive time
-- exclusive instrumented time
-- averages / maxima
-- maximum timestamp
-- active frames
-- active-frame percentage
-- repeated-frame count
-- max calls in one frame
-- calls per active frame
-- dominant cadence
-- >=1 / >=5 / >=16.67 ms counts
+Use the same JIG run first. Do not change the gameplay scenario yet; this first run validates the profiler itself.
 
-### RSP_Alpha_ByOwner.csv
+1. Build Alpha 0.3.1 in GitHub Actions.
+2. Replace the existing profiler DLL.
+3. Launch Cyberpunk and fully load the save.
+4. Keep CapFrameX and RSP on F11.
+5. Press F11; confirm one high beep.
+6. Run the same JIG route.
+7. Press F11; confirm two low beeps.
+8. Wait for CSV export.
+9. Send the complete `RESULTS` folder plus matching CapFrameX capture.
 
-Per source-owner runtime shape:
-
-- calls/sec
-- active-frame percentage
-- calls per active frame
-- max calls per frame
-- observed inclusive time
-- exclusive instrumented time
-- spike counts
-
-This is the first “which mods own the runtime pressure?” table.
-
-### RSP_Alpha_ByFunction.csv
-
-Per source function **outgoing call activity**.
-
-This does not pretend to be perfect function self-time. It tells us which source functions are generating the observed call-edge traffic and associated measured subtree/exclusive edge time.
-
-### RSP_Alpha_SharedTargets.csv
-
-Groups all callsites by target and reports:
-
-- total calls
-- calls/sec
-- number of different calling owners
-- number of different source functions
-- observed time
-- max call
-
-This is specifically intended to detect future G-RedRuntime consolidation opportunities such as many mods repeatedly querying the same game state/API.
-
-### RSP_Alpha_Edges.csv
-
-Caller -> callee graph.
-
-Static targets are mapped back to bound function metadata when possible.
-
-Virtual dispatch currently remains `UNRESOLVED_VIRTUAL` at the concrete implementation level; the virtual method name is still retained.
-
-### RSP_Alpha_Cadence.csv
-
-Per callsite runtime rhythm.
-
-It tracks active-frame gaps in buckets:
+Before analyzing mods, verify:
 
 ```text
-<0.1 ms
-0.1-1 ms
-1-5 ms
-5-12 ms
-12-25 ms
-25-75 ms
-75-200 ms
-200-750 ms
-750-1500 ms
->1500 ms
+shard_merge_ok = true
+merged_shards == observed_threads
+frame_quality = GOOD
+observed_calls = tens of millions / same order as Alpha 0.2 baseline
 ```
 
-It also reports:
+If those hold, the next stage is not another profiler redesign. We run deliberately different scenarios and use the stable IDs to build the workload map that will define `G-RedRuntime`.
 
-- active-frame percentage
-- repeated frames
-- max calls/frame
-- calls/active-frame
-- first / last seen
-- dominant cadence
+---
 
-This helps distinguish:
+## Build
+
+GitHub Actions:
 
 ```text
-frame-bound polling
-periodic polling
-inner-loop explosions
-event-driven bursts
-rare expensive work
+.github\workflows\build.yml
 ```
 
-### RSP_Alpha_Frames.csv
+or local Windows build:
 
-One row per actual profiler game-frame boundary:
+```powershell
+BUILD_WINDOWS.ps1
+```
 
-- frame duration according to RED4ext Running-state boundaries
-- total observed calls
-- unique callsites
-- unique owners
-- unique source functions
-- max nested observed call depth
-- observed inclusive sum
-- exclusive instrumented sum
-- largest single observed call
-- spike count
-
-The observed inclusive sum can double-count nested work. `exclusive_instrumented_ms` is the more useful non-overlapping metric inside the instrumented subtree.
-
-### RSP_Alpha_FrameOwners.csv
-
-Sparse per-frame owner attribution.
-
-To avoid gigantic output, an owner/frame row is emitted only when that owner had at least one of:
+Final DLL:
 
 ```text
->=100 calls in the frame
->=0.25 ms exclusive instrumented time
->=1 ms maximum observed call
+red4ext\plugins\redscript_profiler_alpha.dll
 ```
 
-This is the main file for correlating a bad CapFrameX frame with the Redscript owners active during that frame.
-
-### RSP_Alpha_Spikes.csv
-
-Every retained >=1 ms observed call edge with:
-
-- exact QPC-based capture timestamp
-- game frame ID
-- owner/source/function
-- target
-- inclusive duration
-- exclusive instrumented duration
-- nested depth
-
-### RSP_Alpha_HotPaths.csv
-
-Sparse nested path snapshot for >=1 ms observed calls.
-
-This gives paths such as:
-
-```text
-OwnerA::FunctionA@123 -> FunctionB
-|
-OwnerB::FunctionB@456 -> FunctionC
-|
-OwnerC::FunctionC@789 -> Target
-```
-
-The profiler keeps only sparse slow-path events; it does **not** dump every call stack.
-
-### RSP_Alpha_WrapperChains.csv
-
-Aggregates hot paths containing at least two `wrapper$` entries.
-
-This is aimed at finding stacked mod wrappers that repeatedly traverse the same state/query chain.
-
-### RSP_Alpha_WorkMap.csv
-
-First-pass automatic heuristic classification per callsite.
-
-Possible labels:
-
-```text
-INNER_LOOP_EXPLOSION
-FRAME_BOUND_POLLING
-FRAME_BOUND_REPEAT_WORK
-BURST_WORKER
-PERIODIC_POLLING
-HIGH_COST_CALL
-WRAPPER_CHAIN_CANDIDATE
-MIXED
-```
-
-And a corresponding likely treatment such as:
-
-```text
-index/cache/algorithm
-event/cache/dirty-flag
-cache/consolidate/conditional-schedule
-event/lower-cadence/shared-state
-optimize-function/downstream
-```
-
-These are **triage hints**, not final optimization decisions. We inspect the source before changing a mod.
-
-## First Alpha 0.3 test
-
-Use the same JIG scenario as Alpha 0.2.
-
-```text
-1. Build Alpha 0.3.
-2. Replace the Alpha 0.2 DLL.
-3. Launch Cyberpunk.
-4. Fully load the JIG save.
-5. CapFrameX hotkey = F11.
-6. Press F11.
-   - CapFrameX starts.
-   - RSP starts.
-   - hear one HIGH beep.
-7. Run the same JIG route.
-8. Press F11 again.
-   - capture closes immediately.
-   - hear two LOW beeps.
-   - RSP writes files after measurement has stopped.
-9. Send the entire RESULTS folder plus the matching CapFrameX capture.
-```
-
-For the first run, verify `RSP_Alpha_Capture.csv` reports:
-
-```text
-final_flush_ok = true
-observed_threads = 1   (expected, but we are measuring this rather than assuming it)
-```
-
-If `observed_threads > 1`, that is important evidence and we will revise the TLS/frame-flush model before trusting aggregate completeness.
-
-## What we are NOT doing yet
-
-Alpha 0.3 intentionally does not:
-
-- rewrite any third-party Redscript mod
-- create G-RedRuntime yet
-- hook `CScript_RunPureScript`
-- claim perfect VM function self-time
-- record every call event to disk/memory
-- sample calls and extrapolate totals
-
-The purpose of this pass is to build the map that tells us what G-RedRuntime should actually contain.
+---
 
 ## Technical basis / credit
 
-Function/source binding and the proven BindFunction + InvokeStatic + InvokeVirtual interception approach are based on `redscript-dap` by jekky / jac3km4 (MIT).
+Function/source bind mapping and the `BindFunction` + `InvokeStatic` + `InvokeVirtual` hook strategy are based on the open-source `redscript-dap` work by jekky / jac3km4 (MIT).
 
-`red4ext-rs` is pinned to revision:
-
-```text
-c44146c
-```
-
-Alpha 0.3 also uses the RED4ext Running game-state update listener as a frame boundary.
+`red4ext-rs` supplies the RED4ext Rust bindings.
