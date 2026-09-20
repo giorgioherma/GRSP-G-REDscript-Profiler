@@ -1,6 +1,7 @@
 {
-  "name": "RSP Alpha 0.3.2 Framework Mapping Profiler",
-  "version": "0.3.2",
+  "name": "RSP Alpha 0.4.0 Scenario Matrix Profiler",
+  "version": "0.4.0",
+  "basis": "Alpha 0.3.2 frozen instrumentation; no new measured hot-path instrumentation",
   "red4ext_rs_rev": "c44146c",
   "bind_function_hash": 777921665,
   "default_state": "PAUSED",
@@ -13,20 +14,36 @@
   "root_barrier": "one ACTIVE_ROOTS atomic increment/decrement per observed root chain, not per nested call",
   "frame_strategy": "Running-state callback with bool-return compatibility shim on pinned red4ext-rs revision",
   "spike_threshold_ms": 1.0,
+  "scenario_matrix": {
+    "label_file": "red4ext/plugins/redscript_profiler_alpha/RSP_Scenario.txt",
+    "label_read_time": "F11 START before PROFILE_STATE becomes RECORDING",
+    "default_label": "UNLABELED",
+    "recommended_labels": [
+      "IDLE",
+      "WORLD",
+      "COMBAT",
+      "UI"
+    ],
+    "output_layout": "RESULTS/Capture_<id>_<scenario>_<start_unix_ms>/",
+    "session_index": "RESULTS/RSP_SessionIndex.csv",
+    "latest_pointer": "RESULTS/LATEST.txt",
+    "preserve_multiple_captures": true
+  },
+  "post_capture_framework_summary": [
+    "intrinsic_calls",
+    "wrapper_calls",
+    "semantic_calls",
+    "framework_shared_calls",
+    "root_calls",
+    "descendant_calls",
+    "cross_mod_calls"
+  ],
   "stable_ids": {
     "function_prefix": "RSPF-",
     "callsite_prefix": "RSPC-",
     "hash": "FNV-1a 64-bit over source/function/callsite identity"
   },
-  "new_framework_design_outputs": [
-    "RSP_Alpha_Threads.csv",
-    "RSP_Alpha_Roots.csv",
-    "RSP_Alpha_CrossModEdges.csv",
-    "RSP_Alpha_TargetDomains.csv",
-    "RSP_Alpha_OwnerDomains.csv",
-    "RSP_Alpha_FrameworkSignals.csv"
-  ],
-  "all_outputs": [
+  "outputs_per_capture": [
     "RSP_Alpha_Status.txt",
     "RSP_Alpha_Capture.csv",
     "RSP_Alpha_Markers.csv",
@@ -54,21 +71,15 @@
     "shard_merge_ok=true",
     "merged_shards==observed_threads",
     "frame_quality=GOOD",
-    "observed_calls returns to same order as Alpha 0.2 baseline",
-    "unresolved_static_calls is negligible compared with named_static_calls"
+    "unresolved_static_calls is negligible compared with named_static_calls",
+    "dropped_spikes=0 or understood",
+    "dropped_hot_paths=0 or understood"
   ],
   "limitations": [
     "not every REDscript intrinsic/VM instruction is observed",
     "exclusive_instrumented_ms is instrumented-edge exclusive time, not guaranteed full VM self time",
     "virtual targets are not guaranteed concrete implementation ownership",
-    "target-domain and framework-signal classifications are heuristics"
-  ],
-  "static_target_resolution": "post-capture unique Function* resolution after shard merge; zero static-name work on measured hot path",
-  "partial_frame_semantics": "only capture start/stop boundaries can mark a global frame partial",
-  "stop_audio": "asynchronous worker; excluded from stop drain timing",
-  "domain_refinements": [
-    "LANGUAGE_INTRINSIC",
-    "SCRIPT_WRAPPER"
-  ],
-  "framework_signal_refinement": "SHARED_QUERY_CONSUMER uses semantic shared targets excluding language intrinsics and wrapper/proxy traffic"
+    "target-domain and framework-signal classifications are heuristics",
+    "CapFrameX pairing must use the capture from the same F11 window; Alpha 0.4 records scenario/start timestamp/folder to make mismatches obvious"
+  ]
 }

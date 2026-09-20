@@ -1,10 +1,7 @@
-Third-party technical basis / attribution
+RSP Alpha 0.3 Runtime Mapping Profiler
 
-redscript-dap
-Copyright (c) 2024 jekky
-License: MIT
-Repository: https://github.com/jac3km4/redscript-dap
+Technical basis:
+- redscript-dap by jekky / jac3km4 (MIT): FunctionInfo / SourceFileInfo binding and the proven BindFunction + InvokeStatic + InvokeVirtual interception approach.
+- red4ext-rs by jac3km4 and contributors: Rust bindings used to build the RED4ext plugin.
 
-This alpha reuses the documented/reverse-engineered FunctionInfo and
-SourceFileInfo layouts and follows the bind/opcode hook architecture from
-redscript-dap. It is not redscript-dap and does not include its debugger server.
+This project does not claim authorship of RED4ext, red4ext-rs, redscript, redscript-dap, Cyber Engine Tweaks, or Cyberpunk 2077.

@@ -1,0 +1,4 @@
+# RSP Alpha 0.4 scenario label.
+# Edit the first non-comment line before each F11 capture.
+# The file is read at capture START, so the game does not need to be restarted.
+WORLD

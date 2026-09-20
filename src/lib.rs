@@ -3,7 +3,7 @@ use std::{
     collections::{HashMap, HashSet},
     env,
     ffi::c_void,
-    fs::{self, File},
+    fs::{self, File, OpenOptions},
     io::{BufWriter, Write},
     mem,
     path::{Path, PathBuf},
@@ -304,6 +304,13 @@ static SPIKES: LazyLock<RwLock<Vec<SpikeEvent>>> = LazyLock::new(|| RwLock::new(
 static HOT_PATHS: LazyLock<RwLock<Vec<HotPathEvent>>> =
     LazyLock::new(|| RwLock::new(Vec::new()));
 
+// Alpha 0.4 scenario-matrix metadata. This is read only at F11 START and
+// therefore adds no file I/O to the measured window.
+static CAPTURE_SCENARIO: LazyLock<RwLock<String>> =
+    LazyLock::new(|| RwLock::new("UNLABELED".to_owned()));
+static LAST_CAPTURE_DIR: LazyLock<RwLock<String>> =
+    LazyLock::new(|| RwLock::new(String::new()));
+
 static CONTROL_THREAD_RUNNING: AtomicBool = AtomicBool::new(false);
 static BIND_HOOK_OK: AtomicBool = AtomicBool::new(false);
 static STATIC_HOOK_OK: AtomicBool = AtomicBool::new(false);
@@ -358,7 +365,7 @@ unsafe extern "system" {
 impl Plugin for RedscriptProfilerAlpha {
     const AUTHOR: &'static U16CStr = wcstr!("RSP alpha");
     const NAME: &'static U16CStr = wcstr!("redscript-profiler-alpha");
-    const VERSION: SemVer = SemVer::new(0, 3, 2);
+    const VERSION: SemVer = SemVer::new(0, 4, 0);
 
     fn on_init(env: &SdkEnv) {
         init_qpc();
@@ -374,7 +381,7 @@ impl Plugin for RedscriptProfilerAlpha {
         BIND_HOOK_OK.store(bind_ok, Ordering::Release);
 
         env.info(format!(
-            "[RSP alpha 0.3.2] bind-function hook: {}",
+            "[RSP alpha 0.4.0] bind-function hook: {}",
             if bind_ok { "OK" } else { "FAILED" }
         ));
 
@@ -399,7 +406,7 @@ impl Plugin for RedscriptProfilerAlpha {
         FRAME_LISTENER_OK.store(frame_ok, Ordering::Release);
 
         env.info(format!(
-            "[RSP alpha 0.3.2] running-frame listener: {}",
+            "[RSP alpha 0.4.0] running-frame listener: {}",
             if frame_ok { "OK" } else { "FAILED" }
         ));
     }
@@ -438,7 +445,7 @@ unsafe extern "C" fn on_app_init(_app: &GameApp) {
     VIRTUAL_HOOK_OK.store(virtual_ok, Ordering::Release);
 
     env.info(format!(
-        "[RSP alpha 0.3.2] InvokeStatic hook: {} / InvokeVirtual hook: {}",
+        "[RSP alpha 0.4.0] InvokeStatic hook: {} / InvokeVirtual hook: {}",
         if static_ok { "OK" } else { "FAILED" },
         if virtual_ok { "OK" } else { "FAILED" }
     ));
@@ -1376,6 +1383,9 @@ fn start_control_thread() {
 }
 
 fn begin_capture() {
+    // Read the matrix label before the measured window opens. Editing
+    // RSP_Scenario.txt between captures does not require restarting the game.
+    *CAPTURE_SCENARIO.write() = read_scenario_label();
     clear_measurement_state();
 
     SPIKES_DROPPED.store(0, Ordering::Relaxed);
@@ -1733,16 +1743,142 @@ fn signal_stop() {
     }
 }
 
-fn results_dir() -> Option<PathBuf> {
+fn plugin_data_dir() -> Option<PathBuf> {
     let exe = env::current_exe().ok()?;
     let game_root = exe.parent()?.parent()?.parent()?;
     Some(
         game_root
             .join("red4ext")
             .join("plugins")
-            .join("redscript_profiler_alpha")
-            .join("RESULTS"),
+            .join("redscript_profiler_alpha"),
     )
+}
+
+fn results_dir() -> Option<PathBuf> {
+    Some(plugin_data_dir()?.join("RESULTS"))
+}
+
+fn scenario_file_path() -> Option<PathBuf> {
+    Some(plugin_data_dir()?.join("RSP_Scenario.txt"))
+}
+
+fn read_scenario_label() -> String {
+    let Some(path) = scenario_file_path() else {
+        return "UNLABELED".to_owned();
+    };
+
+    let Ok(text) = fs::read_to_string(path) else {
+        return "UNLABELED".to_owned();
+    };
+
+    text.lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(normalize_scenario_label)
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "UNLABELED".to_owned())
+}
+
+fn normalize_scenario_label(raw: &str) -> String {
+    raw.trim()
+        .chars()
+        .take(48)
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                c.to_ascii_uppercase()
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('_')
+        .to_owned()
+}
+
+fn capture_scenario() -> String {
+    CAPTURE_SCENARIO.read().clone()
+}
+
+fn capture_dir_name() -> String {
+    format!(
+        "Capture_{:04}_{}_{}",
+        CAPTURE_ID.load(Ordering::Relaxed),
+        capture_scenario(),
+        CAPTURE_START_UNIX_MS.load(Ordering::Relaxed)
+    )
+}
+
+fn capture_results_dir() -> Option<PathBuf> {
+    Some(results_dir()?.join(capture_dir_name()))
+}
+
+fn write_latest_pointer(base: &Path, capture_dir: &Path) -> std::io::Result<()> {
+    let name = capture_dir
+        .file_name()
+        .map(|x| x.to_string_lossy().into_owned())
+        .unwrap_or_else(|| capture_dir.to_string_lossy().into_owned());
+    fs::write(
+        base.join("LATEST.txt"),
+        format!(
+            "{}\nscenario={}\ncapture_id={}\nstart_unix_ms={}\n",
+            name,
+            capture_scenario(),
+            CAPTURE_ID.load(Ordering::Relaxed),
+            CAPTURE_START_UNIX_MS.load(Ordering::Relaxed)
+        ),
+    )
+}
+
+fn append_session_index(base: &Path, capture_dir: &Path) -> std::io::Result<()> {
+    let path = base.join("RSP_SessionIndex.csv");
+    let is_new = !path.exists() || path.metadata().map(|m| m.len() == 0).unwrap_or(true);
+    let file = OpenOptions::new().create(true).append(true).open(path)?;
+    let mut w = BufWriter::new(file);
+
+    if is_new {
+        writeln!(
+            w,
+            "version,capture_id,scenario,capture_folder,start_unix_ms,stop_unix_ms,duration_ms,observed_calls,intrinsic_calls,wrapper_calls,semantic_calls,framework_shared_calls,root_calls,descendant_calls,cross_mod_calls,observed_threads,merged_shards,frame_callbacks,frame_quality,named_static_calls,unresolved_static_calls,shard_merge_ok"
+        )?;
+    }
+
+    let (_, _, named_static_calls, unresolved_static_calls) = static_resolution_summary();
+    let (intrinsic_calls, wrapper_calls, semantic_calls, framework_shared_calls) =
+        framework_call_summary();
+    let (root_calls, descendant_calls) = root_work_summary();
+    let cross_mod_calls = cross_mod_call_total();
+
+    let folder = capture_dir
+        .file_name()
+        .map(|x| x.to_string_lossy().into_owned())
+        .unwrap_or_else(|| capture_dir.to_string_lossy().into_owned());
+
+    writeln!(
+        w,
+        "0.4.0,{},{},{},{},{},{:.3},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+        CAPTURE_ID.load(Ordering::Relaxed),
+        csv(&capture_scenario()),
+        csv(&folder),
+        CAPTURE_START_UNIX_MS.load(Ordering::Relaxed),
+        CAPTURE_STOP_UNIX_MS.load(Ordering::Relaxed),
+        CAPTURE_DURATION_US.load(Ordering::Relaxed) as f64 / 1_000.0,
+        LAST_OBSERVED_CALLS.load(Ordering::Relaxed),
+        intrinsic_calls,
+        wrapper_calls,
+        semantic_calls,
+        framework_shared_calls,
+        root_calls,
+        descendant_calls,
+        cross_mod_calls,
+        observed_thread_count(),
+        MERGED_SHARDS.load(Ordering::Relaxed),
+        FRAME_CALLBACKS.load(Ordering::Relaxed),
+        frame_quality(),
+        named_static_calls,
+        unresolved_static_calls,
+        LAST_SHARD_MERGE_OK.load(Ordering::Acquire),
+    )?;
+    w.flush()
 }
 
 fn clear_stale_results() {
@@ -1860,6 +1996,73 @@ fn static_resolution_summary() -> (u64, u64, u64, u64) {
     (named_unique, unresolved_unique, named_calls, unresolved_calls)
 }
 
+fn framework_call_summary() -> (u64, u64, u64, u64) {
+    let funcs = FUNCTIONS.read();
+    let targets = TARGET_NAMES.read();
+    let callsites = CALLSITES.read();
+
+    let mut intrinsic_calls = 0u64;
+    let mut wrapper_calls = 0u64;
+    let mut semantic_calls = 0u64;
+    let mut grouped: HashMap<(u8, u64), (u64, HashSet<u64>)> = HashMap::new();
+
+    for (key, stat) in callsites.iter() {
+        let target = target_info(*key, &funcs, &targets);
+        let domain = target_domain(&target.display);
+        match domain {
+            "LANGUAGE_INTRINSIC" => {
+                intrinsic_calls = intrinsic_calls.saturating_add(stat.calls);
+            }
+            "SCRIPT_WRAPPER" => {
+                wrapper_calls = wrapper_calls.saturating_add(stat.calls);
+            }
+            _ => {
+                semantic_calls = semantic_calls.saturating_add(stat.calls);
+                let owner_hash = funcs
+                    .get(&key.caller)
+                    .map(|m| m.owner_hash)
+                    .unwrap_or(0);
+                let e = grouped
+                    .entry((key.kind, key.target))
+                    .or_insert((0, HashSet::new()));
+                e.0 = e.0.saturating_add(stat.calls);
+                if owner_hash != 0 {
+                    e.1.insert(owner_hash);
+                }
+            }
+        }
+    }
+
+    let framework_shared_calls = grouped
+        .values()
+        .filter(|entry| entry.1.len() >= 3)
+        .map(|entry| entry.0)
+        .sum::<u64>();
+
+    (
+        intrinsic_calls,
+        wrapper_calls,
+        semantic_calls,
+        framework_shared_calls,
+    )
+}
+
+fn root_work_summary() -> (u64, u64) {
+    let roots = ROOTS.read();
+    (
+        roots.values().map(|r| r.calls).sum::<u64>(),
+        roots.values().map(|r| r.descendant_calls).sum::<u64>(),
+    )
+}
+
+fn cross_mod_call_total() -> u64 {
+    CROSS_MOD_EDGES
+        .read()
+        .values()
+        .map(|e| e.calls)
+        .sum::<u64>()
+}
+
 fn write_status_file() -> std::io::Result<()> {
     let Some(dir) = results_dir() else {
         return Ok(());
@@ -1868,9 +2071,13 @@ fn write_status_file() -> std::io::Result<()> {
 
     let (named_static_targets, unresolved_static_targets, named_static_calls, unresolved_static_calls) =
         static_resolution_summary();
+    let (intrinsic_calls, wrapper_calls, semantic_calls, framework_shared_calls) =
+        framework_call_summary();
+    let (root_calls, descendant_calls) = root_work_summary();
+    let cross_mod_calls = cross_mod_call_total();
 
     let status = format!(
-        "RSP alpha 0.3.2 framework-mapping profiler\n\
+        "RSP alpha 0.4.0 scenario-matrix profiler\n\
          Bind/source mapping hook: {}\n\
          InvokeStatic hook: {}\n\
          InvokeVirtual hook: {}\n\
@@ -1886,6 +2093,8 @@ fn write_status_file() -> std::io::Result<()> {
          Nested instrumented call stack: ENABLED\n\
          Multithread shard merge: {}\n\
          Capture ID: {}\n\
+         Scenario: {}\n\
+         Last capture folder: {}\n\
          Capture duration ms: {:.3}\n\
          Stop drain ms: {:.3}\n\
          QPC frequency: {}\n\
@@ -1898,6 +2107,13 @@ fn write_status_file() -> std::io::Result<()> {
          Unresolved static calls: {}\n\
          Last completed callsite rows: {}\n\
          Last completed observed calls: {}\n\
+         Intrinsic calls: {}\n\
+         Wrapper calls: {}\n\
+         Semantic calls: {}\n\
+         Framework-shared semantic calls: {}\n\
+         Root calls: {}\n\
+         Descendant calls: {}\n\
+         Cross-mod nested calls: {}\n\
          Last completed owner rows: {}\n\
          Last completed function rows: {}\n\
          Last completed frame rows: {}\n\
@@ -1915,6 +2131,8 @@ fn write_status_file() -> std::io::Result<()> {
         state_name(PROFILE_STATE.load(Ordering::Acquire)),
         ok(LAST_SHARD_MERGE_OK.load(Ordering::Acquire)),
         CAPTURE_ID.load(Ordering::Relaxed),
+        capture_scenario(),
+        LAST_CAPTURE_DIR.read().clone(),
         CAPTURE_DURATION_US.load(Ordering::Relaxed) as f64 / 1_000.0,
         STOP_DRAIN_US.load(Ordering::Relaxed) as f64 / 1_000.0,
         QPC_FREQUENCY.load(Ordering::Acquire),
@@ -1927,6 +2145,13 @@ fn write_status_file() -> std::io::Result<()> {
         unresolved_static_calls,
         LAST_CALLSITE_ROWS.load(Ordering::Relaxed),
         LAST_OBSERVED_CALLS.load(Ordering::Relaxed),
+        intrinsic_calls,
+        wrapper_calls,
+        semantic_calls,
+        framework_shared_calls,
+        root_calls,
+        descendant_calls,
+        cross_mod_calls,
         LAST_OWNER_ROWS.load(Ordering::Relaxed),
         LAST_FUNCTION_ROWS.load(Ordering::Relaxed),
         LAST_FRAME_ROWS.load(Ordering::Relaxed),
@@ -1937,7 +2162,17 @@ fn write_status_file() -> std::io::Result<()> {
         if LAST_DUMP_OK.load(Ordering::Acquire) { "OK" } else { "NOT YET / FAILED" },
     );
 
-    fs::write(dir.join("RSP_Alpha_Status.txt"), status)
+    fs::write(dir.join("RSP_Alpha_Status.txt"), &status)?;
+
+    let capture_folder = LAST_CAPTURE_DIR.read().clone();
+    if !capture_folder.is_empty() {
+        let capture_dir = dir.join(capture_folder);
+        if capture_dir.exists() {
+            fs::write(capture_dir.join("RSP_Alpha_Status.txt"), &status)?;
+        }
+    }
+
+    Ok(())
 }
 
 fn ok(v: bool) -> &'static str {
@@ -1945,10 +2180,16 @@ fn ok(v: bool) -> &'static str {
 }
 
 fn dump_results() -> std::io::Result<()> {
-    let Some(dir) = results_dir() else {
+    let Some(base) = results_dir() else {
         return Ok(());
     };
+    let Some(dir) = capture_results_dir() else {
+        return Ok(());
+    };
+
+    fs::create_dir_all(&base)?;
     fs::create_dir_all(&dir)?;
+    *LAST_CAPTURE_DIR.write() = capture_dir_name();
 
     dump_capture_csv(&dir.join("RSP_Alpha_Capture.csv"))?;
     dump_markers_csv(&dir.join("RSP_Alpha_Markers.csv"))?;
@@ -1965,28 +2206,35 @@ fn dump_results() -> std::io::Result<()> {
     dump_hot_paths_csv(&dir.join("RSP_Alpha_HotPaths.csv"))?;
     dump_wrapper_chains_csv(&dir.join("RSP_Alpha_WrapperChains.csv"))?;
     dump_work_map_csv(&dir.join("RSP_Alpha_WorkMap.csv"))?;
-
-    // Alpha 0.3.2 framework-design outputs.
     dump_threads_csv(&dir.join("RSP_Alpha_Threads.csv"))?;
     dump_roots_csv(&dir.join("RSP_Alpha_Roots.csv"))?;
     dump_cross_mod_edges_csv(&dir.join("RSP_Alpha_CrossModEdges.csv"))?;
     dump_target_domains_csv(&dir.join("RSP_Alpha_TargetDomains.csv"))?;
     dump_owner_domains_csv(&dir.join("RSP_Alpha_OwnerDomains.csv"))?;
     dump_framework_signals_csv(&dir.join("RSP_Alpha_FrameworkSignals.csv"))?;
+
+    write_latest_pointer(&base, &dir)?;
+    append_session_index(&base, &dir)?;
     Ok(())
 }
 
 fn dump_capture_csv(path: &Path) -> std::io::Result<()> {
     let (named_static_targets, unresolved_static_targets, named_static_calls, unresolved_static_calls) =
         static_resolution_summary();
+    let (intrinsic_calls, wrapper_calls, semantic_calls, framework_shared_calls) =
+        framework_call_summary();
+    let (root_calls, descendant_calls) = root_work_summary();
+    let cross_mod_calls = cross_mod_call_total();
 
     let file = File::create(path)?;
     let mut w = BufWriter::new(file);
-    writeln!(w, "capture_id,version,state,start_unix_ms,stop_unix_ms,start_qpc,stop_qpc,quiescent_qpc,qpc_frequency,duration_ms,stop_drain_ms,hotkey,hotkey_poll_ms,mapped_mod_functions,observed_threads,merged_shards,frame_callbacks,frame_quality,frame_rows,callsite_rows,observed_calls,owner_rows,function_rows,spike_rows,hot_path_rows,dropped_spikes,dropped_hot_paths,named_static_targets,unresolved_static_targets,named_static_calls,unresolved_static_calls,shard_merge_ok")?;
+    writeln!(w, "capture_id,version,scenario,capture_folder,state,start_unix_ms,stop_unix_ms,start_qpc,stop_qpc,quiescent_qpc,qpc_frequency,duration_ms,stop_drain_ms,hotkey,hotkey_poll_ms,mapped_mod_functions,observed_threads,merged_shards,frame_callbacks,frame_quality,frame_rows,callsite_rows,observed_calls,intrinsic_calls,wrapper_calls,semantic_calls,framework_shared_calls,root_calls,descendant_calls,cross_mod_calls,owner_rows,function_rows,spike_rows,hot_path_rows,dropped_spikes,dropped_hot_paths,named_static_targets,unresolved_static_targets,named_static_calls,unresolved_static_calls,shard_merge_ok")?;
     writeln!(
         w,
-        "{},0.3.2,{},{},{},{},{},{},{},{:.3},{:.3},F11,{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+        "{},0.4.0,{},{},{},{},{},{},{},{},{},{:.3},{:.3},F11,{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
         CAPTURE_ID.load(Ordering::Relaxed),
+        csv(&capture_scenario()),
+        csv(&capture_dir_name()),
         state_name(PROFILE_STATE.load(Ordering::Acquire)),
         CAPTURE_START_UNIX_MS.load(Ordering::Relaxed),
         CAPTURE_STOP_UNIX_MS.load(Ordering::Relaxed),
@@ -2005,6 +2253,13 @@ fn dump_capture_csv(path: &Path) -> std::io::Result<()> {
         LAST_FRAME_ROWS.load(Ordering::Relaxed),
         LAST_CALLSITE_ROWS.load(Ordering::Relaxed),
         LAST_OBSERVED_CALLS.load(Ordering::Relaxed),
+        intrinsic_calls,
+        wrapper_calls,
+        semantic_calls,
+        framework_shared_calls,
+        root_calls,
+        descendant_calls,
+        cross_mod_calls,
         LAST_OWNER_ROWS.load(Ordering::Relaxed),
         LAST_FUNCTION_ROWS.load(Ordering::Relaxed),
         LAST_SPIKE_ROWS.load(Ordering::Relaxed),
@@ -2023,19 +2278,21 @@ fn dump_capture_csv(path: &Path) -> std::io::Result<()> {
 fn dump_markers_csv(path: &Path) -> std::io::Result<()> {
     let file = File::create(path)?;
     let mut w = BufWriter::new(file);
-    writeln!(w, "capture_id,event,qpc,capture_ms,unix_ms")?;
+    writeln!(w, "capture_id,scenario,event,qpc,capture_ms,unix_ms")?;
     let id = CAPTURE_ID.load(Ordering::Relaxed);
     writeln!(
         w,
-        "{},START,{},0.000,{}",
+        "{},{},START,{},0.000,{}",
         id,
+        csv(&capture_scenario()),
         CAPTURE_START_QPC.load(Ordering::Relaxed),
         CAPTURE_START_UNIX_MS.load(Ordering::Relaxed)
     )?;
     writeln!(
         w,
-        "{},STOP_REQUEST,{},{:.3},{}",
+        "{},{},STOP_REQUEST,{},{:.3},{}",
         id,
+        csv(&capture_scenario()),
         CAPTURE_STOP_QPC.load(Ordering::Relaxed),
         CAPTURE_DURATION_US.load(Ordering::Relaxed) as f64 / 1_000.0,
         CAPTURE_STOP_UNIX_MS.load(Ordering::Relaxed)
@@ -2044,8 +2301,9 @@ fn dump_markers_csv(path: &Path) -> std::io::Result<()> {
     if quiet != 0 {
         writeln!(
             w,
-            "{},QUIESCENT,{},{:.3},{}",
+            "{},{},QUIESCENT,{},{:.3},{}",
             id,
+            csv(&capture_scenario()),
             quiet,
             capture_ms_from_qpc(quiet),
             CAPTURE_STOP_UNIX_MS.load(Ordering::Relaxed)
