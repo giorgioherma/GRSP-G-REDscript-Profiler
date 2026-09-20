@@ -1,11 +1,29 @@
-# RSP Alpha 0.3.1 — Framework Mapping / Multithread Fix
+# RSP Alpha 0.3.2 — Framework Mapping / Multithread Fix
 
 Alpha 0.3 showed the right profiler architecture but exposed two problems in the first mapping pass:
 
 1. REDscript activity was observed on multiple hook threads, while Alpha 0.3 only flushed the TLS belonging to the thread that received the Running-state callback.
 2. The Running-state callback registered successfully but did not continue reliably with the old `red4ext-rs` callback ABI used by the pinned revision.
 
-Alpha 0.3.1 fixes those before any Redscript optimization framework is designed.
+Alpha 0.3.2 fixes those before any Redscript optimization framework is designed.
+
+
+## Alpha 0.3.2 cleanup / freeze-candidate changes
+
+Alpha 0.3.2 keeps the 0.3.1 multithread shard architecture and exact per-call QPC timing, but fixes three mapping/diagnostic issues found in the successful JIG validation run:
+
+1. **Static target-name resolution is restored with zero capture-path cost.** `InvokeStatic` targets keep their raw `Function*` during measurement. After F11 STOP, once all thread shards are merged and quiescent, Alpha 0.3.2 resolves each unique static target once and fills the shared target-name cache. Bound mod functions still resolve through the source/function map; unbound engine/intrinsic functions are emitted as `NAMED_STATIC` instead of raw addresses whenever their `Function` metadata is available. This improves `SharedTargets`, `Edges`, `TargetDomains`, `OwnerDomains`, stable callsite IDs, and framework design signals without adding static-name lookup work to the measured hot path.
+2. **Partial-frame semantics are global again.** A hook thread ending local activity no longer marks that whole game frame partial. Only the F11 start boundary and F11 stop boundary may be partial. The first captured boundary is explicitly marked partial because capture starts asynchronously between game-frame callbacks.
+3. **STOP audio is asynchronous.** The double low beep no longer blocks the quiescence/drain timer. `stop_drain_ms` now reflects profiler drain/barrier work rather than Win32 `Beep()` latency.
+
+Two additional framework-mapping refinements are included:
+
+- target domains now separate `LANGUAGE_INTRINSIC` and `SCRIPT_WRAPPER` traffic from semantic runtime domains, preventing operators/wrappers from drowning the domain map;
+- `FrameworkSignals.csv` retains the raw shared-target count but adds `framework_shared_targets_ge3owners`, excluding language intrinsics and wrapper/proxy targets when deciding `SHARED_QUERY_CONSUMER`.
+
+Capture/status metadata now also reports unique named/unresolved static targets and their call counts. For the next validation run, the desired trust condition is not only a successful shard merge but also that **the overwhelming majority of static calls are named**.
+
+---
 
 ## What this build is for
 
@@ -52,7 +70,7 @@ There are no periodic CSV writes during the measurement window.
 
 Accuracy remains the priority.
 
-Alpha 0.3.1 still performs QPC timing for every observed profiled `InvokeStatic` / `InvokeVirtual` call. It does **not** sample calls and does not extrapolate counts.
+Alpha 0.3.2 still performs QPC timing for every observed profiled `InvokeStatic` / `InvokeVirtual` call. It does **not** sample calls and does not extrapolate counts.
 
 The hot path avoids the Alpha 0.2 global aggregation lock. Each observed thread writes to its own leaked, thread-owned shard. Global aggregation occurs after STOP, when:
 
@@ -78,7 +96,7 @@ red4ext-rs rev = c44146c
 
 because that is the revision already proven with our bind/opcode layouts.
 
-That old Rust binding models game-state callbacks as void-returning, while the current RED4ext game-state ABI uses a bool-returning `OnUpdate`. Alpha 0.3.1 installs a compatibility callback that returns `false`, keeping `Running::OnUpdate` alive while preserving the known VM-hook revision.
+That old Rust binding models game-state callbacks as void-returning, while the current RED4ext game-state ABI uses a bool-returning `OnUpdate`. Alpha 0.3.2 installs a compatibility callback that returns `false`, keeping `Running::OnUpdate` alive while preserving the known VM-hook revision.
 
 After every capture check:
 
@@ -115,7 +133,7 @@ frame_quality = GOOD
 
 A **root** is the start of an observed mod-origin call chain when the profiler's instrumented stack is empty.
 
-For every root Alpha 0.3.1 tracks:
+For every root Alpha 0.3.2 tracks:
 
 ```text
 root calls
@@ -139,7 +157,7 @@ RSP_Alpha_Roots.csv
 
 ### Cross-mod nested edges
 
-When an observed nested call transitions from one source owner to another source owner, Alpha 0.3.1 records that edge.
+When an observed nested call transitions from one source owner to another source owner, Alpha 0.3.2 records that edge.
 
 Example concept:
 
@@ -174,6 +192,8 @@ This tells us whether a future shared runtime service needs to be thread-safe or
 Target names are grouped **heuristically at export time** into domains such as:
 
 ```text
+LANGUAGE_INTRINSIC
+SCRIPT_WRAPPER
 BLACKBOARD
 STATUS_EFFECT
 EQUIPMENT_INVENTORY
@@ -231,7 +251,7 @@ These are deliberately labelled as signals. They do not automatically prove that
 
 Raw runtime function pointers are not suitable for joining separate game sessions.
 
-Alpha 0.3.1 adds stable FNV-1a-derived IDs based on source/function/callsite identity:
+Alpha 0.3.2 adds stable FNV-1a-derived IDs based on source/function/callsite identity:
 
 ```text
 RSPF-...   stable function ID
@@ -240,7 +260,7 @@ RSPC-...   stable callsite ID
 
 They appear in key output tables so later captures such as idle / world / combat / UI can be joined even if runtime pointers change.
 
-An unresolved static target can still reduce stability because the target may fall back to a pointer representation; the resolution column remains authoritative.
+Static targets are now named lazily and cached. If a static target still cannot be resolved, it may fall back to a pointer representation; the resolution column and the new unresolved-static counters remain authoritative.
 
 ---
 
@@ -301,11 +321,11 @@ Virtual targets still use method-name resolution rather than guaranteed concrete
 
 ---
 
-## First Alpha 0.3.1 test
+## First Alpha 0.3.2 test
 
 Use the same JIG run first. Do not change the gameplay scenario yet; this first run validates the profiler itself.
 
-1. Build Alpha 0.3.1 in GitHub Actions.
+1. Build Alpha 0.3.2 in GitHub Actions.
 2. Replace the existing profiler DLL.
 3. Launch Cyberpunk and fully load the save.
 4. Keep CapFrameX and RSP on F11.

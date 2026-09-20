@@ -1,6 +1,6 @@
 {
-  "name": "RSP Alpha 0.3.1 Framework Mapping Profiler",
-  "version": "0.3.1",
+  "name": "RSP Alpha 0.3.2 Framework Mapping Profiler",
+  "version": "0.3.2",
   "red4ext_rs_rev": "c44146c",
   "bind_function_hash": 777921665,
   "default_state": "PAUSED",
@@ -54,12 +54,21 @@
     "shard_merge_ok=true",
     "merged_shards==observed_threads",
     "frame_quality=GOOD",
-    "observed_calls returns to same order as Alpha 0.2 baseline"
+    "observed_calls returns to same order as Alpha 0.2 baseline",
+    "unresolved_static_calls is negligible compared with named_static_calls"
   ],
   "limitations": [
     "not every REDscript intrinsic/VM instruction is observed",
     "exclusive_instrumented_ms is instrumented-edge exclusive time, not guaranteed full VM self time",
     "virtual targets are not guaranteed concrete implementation ownership",
     "target-domain and framework-signal classifications are heuristics"
-  ]
+  ],
+  "static_target_resolution": "post-capture unique Function* resolution after shard merge; zero static-name work on measured hot path",
+  "partial_frame_semantics": "only capture start/stop boundaries can mark a global frame partial",
+  "stop_audio": "asynchronous worker; excluded from stop drain timing",
+  "domain_refinements": [
+    "LANGUAGE_INTRINSIC",
+    "SCRIPT_WRAPPER"
+  ],
+  "framework_signal_refinement": "SHARED_QUERY_CONSUMER uses semantic shared targets excluding language intrinsics and wrapper/proxy traffic"
 }

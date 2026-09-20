@@ -358,7 +358,7 @@ unsafe extern "system" {
 impl Plugin for RedscriptProfilerAlpha {
     const AUTHOR: &'static U16CStr = wcstr!("RSP alpha");
     const NAME: &'static U16CStr = wcstr!("redscript-profiler-alpha");
-    const VERSION: SemVer = SemVer::new(0, 3, 1);
+    const VERSION: SemVer = SemVer::new(0, 3, 2);
 
     fn on_init(env: &SdkEnv) {
         init_qpc();
@@ -374,7 +374,7 @@ impl Plugin for RedscriptProfilerAlpha {
         BIND_HOOK_OK.store(bind_ok, Ordering::Release);
 
         env.info(format!(
-            "[RSP alpha 0.3.1] bind-function hook: {}",
+            "[RSP alpha 0.3.2] bind-function hook: {}",
             if bind_ok { "OK" } else { "FAILED" }
         ));
 
@@ -399,7 +399,7 @@ impl Plugin for RedscriptProfilerAlpha {
         FRAME_LISTENER_OK.store(frame_ok, Ordering::Release);
 
         env.info(format!(
-            "[RSP alpha 0.3.1] running-frame listener: {}",
+            "[RSP alpha 0.3.2] running-frame listener: {}",
             if frame_ok { "OK" } else { "FAILED" }
         ));
     }
@@ -438,7 +438,7 @@ unsafe extern "C" fn on_app_init(_app: &GameApp) {
     VIRTUAL_HOOK_OK.store(virtual_ok, Ordering::Release);
 
     env.info(format!(
-        "[RSP alpha 0.3.1] InvokeStatic hook: {} / InvokeVirtual hook: {}",
+        "[RSP alpha 0.3.2] InvokeStatic hook: {} / InvokeVirtual hook: {}",
         if static_ok { "OK" } else { "FAILED" },
         if virtual_ok { "OK" } else { "FAILED" }
     ));
@@ -458,7 +458,10 @@ unsafe extern "C" fn on_running_update_compat(_app: &GameApp) -> bool {
             frame_id,
             start_qpc,
             end_qpc: end_qpc.max(start_qpc),
-            partial: false,
+            // Capture begins asynchronously from the game-frame callback, so
+            // the first observed boundary represents only the tail of that
+            // game frame. Later complete boundaries are not partial.
+            partial: frame_id == 0,
         });
         FRAME_CALLBACKS.fetch_add(1, Ordering::Relaxed);
     }
@@ -538,7 +541,7 @@ unsafe extern "C" fn on_invoke_static(
         target: instr.func as usize as u64,
     };
 
-    if !enter_profiled_call(key) {
+    if !enter_profiled_call(key, None) {
         unsafe { cb(i, f, a3, a4) };
         return;
     }
@@ -580,12 +583,10 @@ unsafe extern "C" fn on_invoke_virtual(
         target: target_hash,
     };
 
-    if !enter_profiled_call(key) {
+    if !enter_profiled_call(key, Some(instr.name)) {
         unsafe { cb(i, f, a3, a4) };
         return;
     }
-
-    register_virtual_target_name(target_hash, instr.name);
 
     unsafe { cb(i, f, a3, a4) };
     exit_profiled_call(key, qpc_now());
@@ -748,7 +749,7 @@ fn finalize_thread_frame(t: &mut ThreadState, partial: bool) {
     t.frame_max_depth = 0;
 }
 
-fn enter_profiled_call(key: CallsiteKey) -> bool {
+fn enter_profiled_call(key: CallsiteKey, virtual_name: Option<CName>) -> bool {
     if PROFILE_STATE.load(Ordering::Relaxed) != STATE_RECORDING {
         return false;
     }
@@ -760,6 +761,21 @@ fn enter_profiled_call(key: CallsiteKey) -> bool {
         let caller_info = caller_cache_entry(t, key.caller);
         if !caller_info.is_mod {
             return false;
+        }
+
+        // Virtual CName text is easiest to retain while the bytecode operand is
+        // in hand. Publish only on first sight per thread and do it before QPC
+        // timing starts. Static Function* names are resolved after STOP from the
+        // merged callsite map, adding zero static-name work to the capture path.
+        if key.kind == 1 {
+            if let Some(name) = virtual_name {
+                if t.virtual_name_seen.insert(key.target) {
+                    TARGET_NAMES
+                        .write()
+                        .entry((1, key.target))
+                        .or_insert_with(|| name.as_str().to_owned());
+                }
+            }
         }
 
         let is_root = t.stack.is_empty();
@@ -947,14 +963,40 @@ fn exit_profiled_call(expected_key: CallsiteKey, end_qpc: u64) {
     }
 }
 
-fn register_virtual_target_name(hash: u64, name: CName) {
-    let should_publish = with_thread_state(|t| t.virtual_name_seen.insert(hash));
+fn resolve_static_target_names_post_capture() {
+    // Resolve each unique InvokeStatic target only after the capture is closed
+    // and shards are merged. This restores semantic target names with zero
+    // static-name resolution work on the measured hot path.
+    let funcs = FUNCTIONS.read();
+    let callsites = CALLSITES.read();
+    let existing = TARGET_NAMES.read();
+    let mut unresolved: HashSet<u64> = HashSet::new();
 
-    if should_publish {
-        TARGET_NAMES
-            .write()
-            .entry((1, hash))
-            .or_insert_with(|| name.as_str().to_owned());
+    for key in callsites.keys() {
+        if key.kind == 0
+            && !funcs.contains_key(&(key.target as usize))
+            && !existing.contains_key(&(0, key.target))
+        {
+            unresolved.insert(key.target);
+        }
+    }
+    drop(existing);
+    drop(callsites);
+
+    if unresolved.is_empty() {
+        return;
+    }
+
+    let mut names = TARGET_NAMES.write();
+    for target in unresolved {
+        let ptr = target as usize;
+        let name = if ptr == 0 {
+            "<null-static>".to_owned()
+        } else {
+            let func = unsafe { &*(ptr as *const Function) };
+            function_name(func)
+        };
+        names.entry((0, target)).or_insert(name);
     }
 }
 
@@ -1089,7 +1131,10 @@ fn merge_all_shards() -> bool {
                 continue;
             }
 
-            finalize_thread_frame(t, true);
+            // A shard ending its local activity does not make the game frame
+            // partial. Global partial-frame semantics come only from capture
+            // boundaries recorded in FRAME_BOUNDARIES.
+            finalize_thread_frame(t, false);
             merged_shards += 1;
 
             for (key, local) in t.aggregate.iter() {
@@ -1118,7 +1163,7 @@ fn merge_all_shards() -> bool {
                     exclusive_instrumented_ticks: 0,
                     largest_call_ticks: 0,
                     spike_count: 0,
-                    partial: f.partial,
+                    partial: false,
                 });
                 e.total_calls = e.total_calls.saturating_add(f.total_calls);
                 e.unique_callsites = e.unique_callsites.saturating_add(f.unique_callsites);
@@ -1129,7 +1174,8 @@ fn merge_all_shards() -> bool {
                 e.exclusive_instrumented_ticks = e.exclusive_instrumented_ticks.saturating_add(f.exclusive_instrumented_ticks);
                 e.largest_call_ticks = e.largest_call_ticks.max(f.largest_call_ticks);
                 e.spike_count = e.spike_count.saturating_add(f.spike_count);
-                e.partial |= f.partial;
+                // Ignore shard-local finalization as a source of global
+                // partial-frame state. Capture boundaries are authoritative.
             }
 
             for r in t.frame_owners.iter() {
@@ -1392,6 +1438,9 @@ fn finish_capture() {
 
     let merge_ok = quiescent && merge_all_shards();
     LAST_SHARD_MERGE_OK.store(merge_ok, Ordering::Release);
+    if merge_ok {
+        resolve_static_target_names_post_capture();
+    }
     PROFILE_STATE.store(STATE_COMPLETE, Ordering::Release);
 
     snapshot_last_counts();
@@ -1672,10 +1721,15 @@ fn signal_start() {
 
 fn signal_stop() {
     #[cfg(windows)]
-    unsafe {
-        Beep(650, 60);
-        thread::sleep(Duration::from_millis(35));
-        Beep(650, 60);
+    {
+        // Do not block STOPPING/quiescence accounting on synchronous Win32
+        // Beep calls. The measurement window has already closed at STOP_QPC;
+        // this worker is purely user feedback.
+        thread::spawn(|| unsafe {
+            Beep(650, 60);
+            thread::sleep(Duration::from_millis(35));
+            Beep(650, 60);
+        });
     }
 }
 
@@ -1773,14 +1827,50 @@ fn frame_quality() -> &'static str {
     }
 }
 
+fn static_resolution_summary() -> (u64, u64, u64, u64) {
+    let funcs = FUNCTIONS.read();
+    let targets = TARGET_NAMES.read();
+    let callsites = CALLSITES.read();
+    let mut unique_seen = HashSet::new();
+    let mut named_unique = 0u64;
+    let mut unresolved_unique = 0u64;
+    let mut named_calls = 0u64;
+    let mut unresolved_calls = 0u64;
+
+    for (key, stat) in callsites.iter() {
+        if key.kind != 0 {
+            continue;
+        }
+        let named = funcs.contains_key(&(key.target as usize))
+            || targets.contains_key(&(0, key.target));
+        if named {
+            named_calls = named_calls.saturating_add(stat.calls);
+        } else {
+            unresolved_calls = unresolved_calls.saturating_add(stat.calls);
+        }
+        if unique_seen.insert(key.target) {
+            if named {
+                named_unique += 1;
+            } else {
+                unresolved_unique += 1;
+            }
+        }
+    }
+
+    (named_unique, unresolved_unique, named_calls, unresolved_calls)
+}
+
 fn write_status_file() -> std::io::Result<()> {
     let Some(dir) = results_dir() else {
         return Ok(());
     };
     fs::create_dir_all(&dir)?;
 
+    let (named_static_targets, unresolved_static_targets, named_static_calls, unresolved_static_calls) =
+        static_resolution_summary();
+
     let status = format!(
-        "RSP alpha 0.3.1 framework-mapping profiler\n\
+        "RSP alpha 0.3.2 framework-mapping profiler\n\
          Bind/source mapping hook: {}\n\
          InvokeStatic hook: {}\n\
          InvokeVirtual hook: {}\n\
@@ -1802,6 +1892,10 @@ fn write_status_file() -> std::io::Result<()> {
          Mapped mod functions: {}\n\
          Observed Redscript hook threads: {}\n\
          Merged thread shards: {}\n\
+         Named static targets: {}\n\
+         Unresolved static targets: {}\n\
+         Named static calls: {}\n\
+         Unresolved static calls: {}\n\
          Last completed callsite rows: {}\n\
          Last completed observed calls: {}\n\
          Last completed owner rows: {}\n\
@@ -1827,6 +1921,10 @@ fn write_status_file() -> std::io::Result<()> {
         mapped_mod_function_count(),
         observed_thread_count(),
         MERGED_SHARDS.load(Ordering::Relaxed),
+        named_static_targets,
+        unresolved_static_targets,
+        named_static_calls,
+        unresolved_static_calls,
         LAST_CALLSITE_ROWS.load(Ordering::Relaxed),
         LAST_OBSERVED_CALLS.load(Ordering::Relaxed),
         LAST_OWNER_ROWS.load(Ordering::Relaxed),
@@ -1868,7 +1966,7 @@ fn dump_results() -> std::io::Result<()> {
     dump_wrapper_chains_csv(&dir.join("RSP_Alpha_WrapperChains.csv"))?;
     dump_work_map_csv(&dir.join("RSP_Alpha_WorkMap.csv"))?;
 
-    // Alpha 0.3.1 framework-design outputs.
+    // Alpha 0.3.2 framework-design outputs.
     dump_threads_csv(&dir.join("RSP_Alpha_Threads.csv"))?;
     dump_roots_csv(&dir.join("RSP_Alpha_Roots.csv"))?;
     dump_cross_mod_edges_csv(&dir.join("RSP_Alpha_CrossModEdges.csv"))?;
@@ -1879,12 +1977,15 @@ fn dump_results() -> std::io::Result<()> {
 }
 
 fn dump_capture_csv(path: &Path) -> std::io::Result<()> {
+    let (named_static_targets, unresolved_static_targets, named_static_calls, unresolved_static_calls) =
+        static_resolution_summary();
+
     let file = File::create(path)?;
     let mut w = BufWriter::new(file);
-    writeln!(w, "capture_id,version,state,start_unix_ms,stop_unix_ms,start_qpc,stop_qpc,quiescent_qpc,qpc_frequency,duration_ms,stop_drain_ms,hotkey,hotkey_poll_ms,mapped_mod_functions,observed_threads,merged_shards,frame_callbacks,frame_quality,frame_rows,callsite_rows,observed_calls,owner_rows,function_rows,spike_rows,hot_path_rows,dropped_spikes,dropped_hot_paths,shard_merge_ok")?;
+    writeln!(w, "capture_id,version,state,start_unix_ms,stop_unix_ms,start_qpc,stop_qpc,quiescent_qpc,qpc_frequency,duration_ms,stop_drain_ms,hotkey,hotkey_poll_ms,mapped_mod_functions,observed_threads,merged_shards,frame_callbacks,frame_quality,frame_rows,callsite_rows,observed_calls,owner_rows,function_rows,spike_rows,hot_path_rows,dropped_spikes,dropped_hot_paths,named_static_targets,unresolved_static_targets,named_static_calls,unresolved_static_calls,shard_merge_ok")?;
     writeln!(
         w,
-        "{},0.3.1,{},{},{},{},{},{},{},{:.3},{:.3},F11,{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+        "{},0.3.2,{},{},{},{},{},{},{},{:.3},{:.3},F11,{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
         CAPTURE_ID.load(Ordering::Relaxed),
         state_name(PROFILE_STATE.load(Ordering::Acquire)),
         CAPTURE_START_UNIX_MS.load(Ordering::Relaxed),
@@ -1910,6 +2011,10 @@ fn dump_capture_csv(path: &Path) -> std::io::Result<()> {
         LAST_HOT_PATH_ROWS.load(Ordering::Relaxed),
         SPIKES_DROPPED.load(Ordering::Relaxed),
         HOT_PATHS_DROPPED.load(Ordering::Relaxed),
+        named_static_targets,
+        unresolved_static_targets,
+        named_static_calls,
+        unresolved_static_calls,
         LAST_SHARD_MERGE_OK.load(Ordering::Acquire),
     )?;
     w.flush()
@@ -2457,7 +2562,11 @@ fn stable_callsite_hash(meta: &FunctionMeta, key: CallsiteKey, target: &TargetIn
 
 fn target_domain(name: &str) -> &'static str {
     let n = name.to_ascii_lowercase();
-    if n.contains("blackboard") {
+    if n.starts_with("operator") || n == "cast" || n.ends_with("::cast") {
+        "LANGUAGE_INTRINSIC"
+    } else if n.contains("wrapper$") || n.contains("proxy$") {
+        "SCRIPT_WRAPPER"
+    } else if n.contains("blackboard") {
         "BLACKBOARD"
     } else if n.contains("statuseffect") || n.contains("status_effect") {
         "STATUS_EFFECT"
@@ -2687,8 +2796,14 @@ fn dump_owner_domains_csv(path: &Path) -> std::io::Result<()> {
     w.flush()
 }
 
+fn is_framework_shared_target(name: &str) -> bool {
+    let domain = target_domain(name);
+    domain != "LANGUAGE_INTRINSIC" && domain != "SCRIPT_WRAPPER"
+}
+
 fn dump_framework_signals_csv(path: &Path) -> std::io::Result<()> {
     let funcs = FUNCTIONS.read();
+    let targets = TARGET_NAMES.read();
     let callsites = CALLSITES.read();
     let owners = OWNER_AGG.read();
     let roots = ROOTS.read();
@@ -2704,12 +2819,20 @@ fn dump_framework_signals_csv(path: &Path) -> std::io::Result<()> {
 
     let mut owner_unique_targets: HashMap<String, HashSet<(u8, u64)>> = HashMap::new();
     let mut owner_shared_targets: HashMap<String, HashSet<(u8, u64)>> = HashMap::new();
+    let mut owner_framework_shared_targets: HashMap<String, HashSet<(u8, u64)>> = HashMap::new();
     let mut owner_wrapper_calls: HashMap<String, u64> = HashMap::new();
     for (key, stat) in callsites.iter() {
         let Some(meta) = funcs.get(&key.caller) else { continue; };
         owner_unique_targets.entry(meta.owner.clone()).or_default().insert((key.kind, key.target));
         if target_owners.get(&(key.kind, key.target)).map_or(0, |x| x.len()) >= 3 {
             owner_shared_targets.entry(meta.owner.clone()).or_default().insert((key.kind, key.target));
+            let target = target_info(*key, &funcs, &targets);
+            if is_framework_shared_target(&target.display) {
+                owner_framework_shared_targets
+                    .entry(meta.owner.clone())
+                    .or_default()
+                    .insert((key.kind, key.target));
+            }
         }
         if meta.function.contains("wrapper$") {
             *owner_wrapper_calls.entry(meta.owner.clone()).or_default() += stat.calls;
@@ -2752,7 +2875,7 @@ fn dump_framework_signals_csv(path: &Path) -> std::io::Result<()> {
 
     let file = File::create(path)?;
     let mut w = BufWriter::new(file);
-    writeln!(w, "capture_id,owner,calls,calls_per_sec,active_frame_pct,calls_per_active_frame,root_calls,avg_descendants_per_root,max_descendants_per_root,unique_targets,shared_targets_ge3owners,wrapper_calls,cross_mod_calls_out,cross_mod_calls_in,threads,signals,framework_primitives")?;
+    writeln!(w, "capture_id,owner,calls,calls_per_sec,active_frame_pct,calls_per_active_frame,root_calls,avg_descendants_per_root,max_descendants_per_root,unique_targets,shared_targets_ge3owners,framework_shared_targets_ge3owners,wrapper_calls,cross_mod_calls_out,cross_mod_calls_in,threads,signals,framework_primitives")?;
 
     let mut rows: Vec<_> = owners.iter().collect();
     rows.sort_by(|a, b| b.1.calls.cmp(&a.1.calls));
@@ -2761,6 +2884,7 @@ fn dump_framework_signals_csv(path: &Path) -> std::io::Result<()> {
         let threads = owner_threads.get(owner).map_or(0, |x| x.len());
         let unique_targets = owner_unique_targets.get(owner).map_or(0, |x| x.len());
         let shared_targets = owner_shared_targets.get(owner).map_or(0, |x| x.len());
+        let framework_shared_targets = owner_framework_shared_targets.get(owner).map_or(0, |x| x.len());
         let wrapper_calls = owner_wrapper_calls.get(owner).copied().unwrap_or(0);
         let active_pct = pct(stat.active_frames, total_frames);
         let calls_per_active = if stat.active_frames > 0 { stat.calls as f64 / stat.active_frames as f64 } else { 0.0 };
@@ -2776,7 +2900,7 @@ fn dump_framework_signals_csv(path: &Path) -> std::io::Result<()> {
             signals.push("AMPLIFICATION");
             primitives.push("CACHE_INDEX_ALGORITHM");
         }
-        if shared_targets >= 5 {
+        if framework_shared_targets >= 5 {
             signals.push("SHARED_QUERY_CONSUMER");
             primitives.push("SHARED_STATE_SERVICE");
         }
@@ -2799,7 +2923,7 @@ fn dump_framework_signals_csv(path: &Path) -> std::io::Result<()> {
 
         writeln!(
             w,
-            "{},{},{},{:.3},{:.3},{:.3},{},{:.3},{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{:.3},{:.3},{:.3},{},{:.3},{},{},{},{},{},{},{},{},{},{}",
             capture_id,
             csv(owner),
             stat.calls,
@@ -2811,6 +2935,7 @@ fn dump_framework_signals_csv(path: &Path) -> std::io::Result<()> {
             max_desc,
             unique_targets,
             shared_targets,
+            framework_shared_targets,
             wrapper_calls,
             cross_out.get(owner).copied().unwrap_or(0),
             cross_in.get(owner).copied().unwrap_or(0),
@@ -2842,6 +2967,14 @@ fn target_info(
                 owner: meta.owner.clone(),
                 function: meta.function.clone(),
                 resolution: "DIRECT",
+            };
+        }
+        if let Some(name) = targets.get(&(0, key.target)) {
+            return TargetInfo {
+                display: name.clone(),
+                owner: "<unbound-static>".to_owned(),
+                function: name.clone(),
+                resolution: "NAMED_STATIC",
             };
         }
         return TargetInfo {
