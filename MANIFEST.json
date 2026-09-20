@@ -1,13 +1,21 @@
 {
-  "name": "RSP Alpha 0.1 Runtime Callsite Profiler",
-  "version": "0.1.0",
+  "name": "RSP Alpha 0.2 Controlled Capture",
+  "version": "0.2.0",
   "red4ext_rs_rev": "c44146c",
   "bind_function_hash": 777921665,
-  "measurement": "inclusive callsite timing around InvokeStatic/InvokeVirtual for r6/scripts callers",
+  "default_state": "PAUSED",
+  "hotkey": "F11",
+  "hotkey_poll_ms": 2,
+  "foreground_guard": "Cyberpunk process only",
+  "measurement": "inclusive callsite timing around InvokeStatic/InvokeVirtual for r6/scripts callers, only inside an explicit F11 capture window",
+  "spike_timeline_threshold_ms": 1.0,
   "outputs": [
     "RSP_Alpha_Status.txt",
+    "RSP_Alpha_Capture.csv",
     "RSP_Alpha_FunctionMap.csv",
-    "RSP_Alpha_CallSites.csv"
+    "RSP_Alpha_CallSites.csv",
+    "RSP_Alpha_Spikes.csv"
   ],
-  "next_if_stable": "Alpha 0.2 direct pure-script function hook for inclusive/self function timing"
+  "csv_policy": "no periodic file writes while recording; flush immediately after F11 stop",
+  "next_if_stable": "thread-local full-function stack for inclusive/self timing"
 }
