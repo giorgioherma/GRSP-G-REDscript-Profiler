@@ -1,0 +1,33 @@
+name: Build RSP Alpha 0.3 Windows DLL
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release DLL
+        run: cargo build --release
+
+      - name: Stage game-root package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path package\red4ext\plugins | Out-Null
+          Copy-Item target\release\redscript_profiler_alpha.dll package\red4ext\plugins\redscript_profiler_alpha.dll
+          Copy-Item README.md package\RSP_ALPHA_README.txt
+          Copy-Item MANIFEST.json package\RSP_ALPHA_MANIFEST.json
+
+      - name: Upload game-root artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RSP-Alpha-0.3-GameRoot
+          path: package
