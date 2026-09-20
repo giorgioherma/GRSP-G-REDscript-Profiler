@@ -1,4 +1,4 @@
-name: Build Windows DLL
+name: Build RSP Alpha 0.4.0 Windows DLL
 
 on:
   workflow_dispatch:
@@ -22,11 +22,15 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path package\red4ext\plugins | Out-Null
+          New-Item -ItemType Directory -Force -Path package\red4ext\plugins\redscript_profiler_alpha | Out-Null
           Copy-Item target\release\redscript_profiler_alpha.dll package\red4ext\plugins\redscript_profiler_alpha.dll
+          Copy-Item RSP_Scenario.txt package\red4ext\plugins\redscript_profiler_alpha\RSP_Scenario.txt
           Copy-Item README.md package\RSP_ALPHA_README.txt
+          Copy-Item MANIFEST.json package\RSP_ALPHA_MANIFEST.json
+          Copy-Item SCENARIO_MATRIX_PLAN.md package\RSP_SCENARIO_MATRIX_PLAN.txt
 
       - name: Upload game-root artifact
         uses: actions/upload-artifact@v4
         with:
-          name: RSP-Alpha-0.1-GameRoot
+          name: RSP-Alpha-0.4.0-GameRoot
           path: package
