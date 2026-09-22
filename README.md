@@ -1,202 +1,198 @@
-RSP ALPHA 0.4.0 — SCENARIO MATRIX PROFILER
-==========================================
+# GRSP 0.5.0 Public Preview — G-REDscript Profiler
 
-PURPOSE
--------
-Alpha 0.3.2 stabilized the profiler itself: complete multithread shard merging,
-real frame callbacks, post-capture static target resolution, correct partial-frame
-semantics, nested timing, cadence, roots, cross-mod edges, target domains, and
-framework signals.
+GRSP is a RED4ext profiler for **Cyberpunk 2077 REDscript mod workloads**. It is intended for normal mod users who want to identify sustained script load and visible stutter sources, while retaining a compact developer subset for authors building shared-runtime or optimization projects such as G-REDruntime.
 
-Alpha 0.4.0 deliberately DOES NOT add new measured hot-path instrumentation.
-Instead it turns the stable profiler into a controlled multi-scenario collection
-tool so IDLE / WORLD / COMBAT / UI captures can be compared without overwriting
-one another or mixing files.
+## What 0.5.0 changes
 
-CAPTURE KEY
------------
-F11 remains shared with CapFrameX:
+The Alpha 0.4 measurement core is retained: exact observed `InvokeStatic` / `InvokeVirtual` call-edge timing, per-thread shards, nested inclusive/exclusive-instrumented timing, real game-frame boundaries, stable IDs and bounded spike capture.
 
-  F11 #1 -> START
-  F11 #2 -> STOP
+The output layer is redesigned for public use:
 
-Audio:
-  START = one high beep
-  STOP  = two low beeps
+- a self-contained `GRSP_Report.html` with a **Top Mods by Observed REDscript Cost** bar chart;
+- `GRSP_ByMod.csv` ranked by exclusive instrumented milliseconds per second;
+- explicit sustained / burst / mixed workload classification;
+- 50 ms `GRSP_Timeline.csv` buckets for correlation with the CET native profiler;
+- Unix timestamps in public frame and spike outputs;
+- a much smaller public output set;
+- a `Developer` folder containing only the most useful framework-design exports.
 
-SCENARIO LABEL
---------------
-Edit:
+No new file I/O, sorting, HTML generation or report work occurs while the capture is recording. Public summaries are generated **after STOP**.
 
-  red4ext\plugins\redscript_profiler_alpha\RSP_Scenario.txt
+## Install
 
-The first non-empty, non-comment line is used as the scenario label. Recommended:
+The GitHub Actions artifact is staged from the game root:
 
-  IDLE
-  WORLD
-  COMBAT
-  UI
+```text
+red4ext\plugins\redscript_profiler_alpha.dll
+red4ext\plugins\redscript_profiler_alpha\RSP_Scenario.txt
+GRSP_README.txt
+GRSP_MANIFEST.json
+GRSP_FRAMEWORK_AUTHOR_GUIDE.txt
+```
 
-The file is read ONLY when F11 starts a capture, before PROFILE_STATE becomes
-RECORDING. You can edit it between captures without restarting Cyberpunk and it
-adds no file I/O inside the measured window.
+The internal DLL name remains `redscript_profiler_alpha.dll` in 0.5.0 so existing Alpha installations are replaced instead of loading two profilers at once.
 
-MULTI-CAPTURE OUTPUT
---------------------
-Each completed capture is preserved in its own directory:
+## Capture
 
-  red4ext\plugins\redscript_profiler_alpha\RESULTS\
-      RSP_Alpha_Status.txt
-      RSP_SessionIndex.csv
-      LATEST.txt
-      Capture_0001_IDLE_<start_unix_ms>\
-      Capture_0002_WORLD_<start_unix_ms>\
-      Capture_0003_COMBAT_<start_unix_ms>\
-      Capture_0004_UI_<start_unix_ms>\
+GRSP starts paused. Fully load a save before profiling.
 
-Each Capture_* folder contains the complete profiler output set and its own
-RSP_Alpha_Status.txt.
+`F11` is intentionally shared with CapFrameX:
 
-RSP_SessionIndex.csv is append-only for the current RESULTS directory and gives
-one summary row per capture, including scenario, duration, total calls, semantic
-calls, wrapper/intrinsic traffic, framework-shared calls, root/descendant work,
-cross-mod traffic, thread/shard counts, frame quality, and static-resolution trust.
+```text
+F11 #1 -> START  (one high beep)
+F11 #2 -> STOP   (two low beeps)
+```
 
-LATEST.txt points to the most recently completed capture folder.
+Edit the first non-comment line in:
 
-FRAMEWORK-DESIGN SUMMARY COUNTERS
----------------------------------
-Alpha 0.4 adds only POST-CAPTURE summary calculations. They do not affect measured
-runtime activity:
+```text
+red4ext\plugins\redscript_profiler_alpha\RSP_Scenario.txt
+```
 
-  intrinsic_calls
-      language-level traffic such as Operator* / Cast
+before a capture. Useful labels include:
 
-  wrapper_calls
-      wrapper/proxy plumbing
+```text
+WORLD
+DRIVING
+COMBAT
+WANTED
+UI
+IDLE
+```
 
-  semantic_calls
-      observed calls excluding LANGUAGE_INTRINSIC and SCRIPT_WRAPPER domains
+The scenario file is read only at START, before recording begins.
 
-  framework_shared_calls
-      semantic target traffic where the same target is used by >=3 source owners
+## Public output
 
-  root_calls
-      observed root callsite executions
+Each capture is preserved under:
 
-  descendant_calls
-      total nested descendants generated beneath observed roots
+```text
+red4ext\plugins\redscript_profiler_alpha\RESULTS\
+  Capture_0001_WORLD_<start_unix_ms>\
+```
 
-  cross_mod_calls
-      nested transitions where parent and child source owners differ
+Open **`GRSP_Report.html`** first.
 
-These counters are intended to make scenario-to-scenario framework design easier.
-They are not a replacement for the detailed CSVs.
+Public files:
 
-PER-CAPTURE OUTPUTS
--------------------
-  RSP_Alpha_Status.txt
-  RSP_Alpha_Capture.csv
-  RSP_Alpha_Markers.csv
-  RSP_Alpha_FunctionMap.csv
-  RSP_Alpha_CallSites.csv
-  RSP_Alpha_ByOwner.csv
-  RSP_Alpha_ByFunction.csv
-  RSP_Alpha_SharedTargets.csv
-  RSP_Alpha_Edges.csv
-  RSP_Alpha_Cadence.csv
-  RSP_Alpha_Frames.csv
-  RSP_Alpha_FrameOwners.csv
-  RSP_Alpha_Spikes.csv
-  RSP_Alpha_HotPaths.csv
-  RSP_Alpha_WrapperChains.csv
-  RSP_Alpha_WorkMap.csv
-  RSP_Alpha_Threads.csv
-  RSP_Alpha_Roots.csv
-  RSP_Alpha_CrossModEdges.csv
-  RSP_Alpha_TargetDomains.csv
-  RSP_Alpha_OwnerDomains.csv
-  RSP_Alpha_FrameworkSignals.csv
+```text
+GRSP_Report.html
+GRSP_Summary.csv
+GRSP_ByMod.csv
+GRSP_ByFunction.csv
+GRSP_Timeline.csv
+GRSP_Frames.csv
+GRSP_Spikes.csv
+GRSP_Markers.csv
+GRSP_FrameworkCandidates.csv
+GRSP_Status.txt
+```
 
-TRUST GATES
------------
-A capture is suitable for framework analysis when:
+`RESULTS\RSP_SessionIndex.csv` remains an append-only index across captures, and `LATEST.txt` points to the newest capture.
 
-  shard_merge_ok = true
-  merged_shards == observed_threads
-  frame_quality = GOOD
-  unresolved_static_calls is zero or negligible
-  dropped_spikes = 0 (or explicitly understood)
-  dropped_hot_paths = 0 (or explicitly understood)
+### GRSP_ByMod.csv
 
-CAPFRAMEX PAIRING
------------------
-Keep the CapFrameX file from the SAME F11 window with the corresponding Capture_*
-folder. The scenario label and start_unix_ms are now embedded in the profiler
-capture metadata/folder name to make accidental file mismatches easier to spot.
+This is the primary public ranking. Important fields:
 
-The Alpha 0.3.2 validation package that led to this build had internally clean
-RSP data, but the CapFrameX JSON bundled with it was from a different window
-(about 116.9 s vs the RSP 154.0 s capture). That did not invalidate RSP 0.3.2,
-but it meant cross-tool correlation could not be evaluated from that bundle.
+- `exclusive_ms_per_sec` — sustained observed REDscript-side cost;
+- `observed_exclusive_share_pct` — share of the profiler's observed exclusive work;
+- `active_frame_pct` — how continuously the owner is active;
+- `max_frame_exclusive_ms` — largest owner contribution in one observed game frame;
+- `max_spike_ms` — largest captured call boundary;
+- `workload_pattern` — `SUSTAINED`, `BURSTY`, `MIXED`, or `BACKGROUND`;
+- `attribution_note` — flags cases where wrapper attribution needs extra caution.
 
-RECOMMENDED NEXT DATASET
-------------------------
-Run four controlled captures using the same installed mod stack:
+The table is decision support, **not an automatic uninstall list**. GRSP cannot know a mod's dependency graph, importance to the user, or whether measured time inside a wrapper boundary belongs entirely to the wrapper's own script logic.
 
-  1. IDLE
-  2. WORLD
-  3. COMBAT
-  4. UI
+## CET profiler correlation
 
-See SCENARIO_MATRIX_PLAN.md for exact intent and handling.
+GRSP 0.5.0 is designed to run in the same window as the CET native profiler.
 
-MEASUREMENT MODEL
------------------
-The instrumentation remains the Alpha 0.3.2 model:
+The public timing files expose the same two useful axes:
 
-  - exact observed InvokeStatic / InvokeVirtual call counts
-  - QPC timing for every observed call (no sampling)
-  - per-thread private shards
-  - root-only active barrier
-  - STOPPING quiescence merge
-  - nested instrumented stack
-  - inclusive + exclusive-instrumented timing
-  - real Running-state frame boundaries
-  - cadence and active-frame analysis
-  - root amplification
-  - cross-mod nesting
-  - sparse >=1 ms spikes / hot paths
-  - post-capture static target resolution
-  - stable function/callsite IDs across captures
+```text
+capture-relative time
+Unix epoch milliseconds
+```
 
-LIMITS
-------
-This remains an observed call-edge profiler, not a complete VM instruction trace.
-Not every REDscript intrinsic/VM operation appears as an InvokeStatic/InvokeVirtual
-edge. exclusive_instrumented_ms is exclusive relative to other instrumented edges,
-not guaranteed complete function self time. Virtual target names do not always
-identify the concrete implementation owner.
+`GRSP_Timeline.csv` uses **50 ms buckets** so it can be joined against the CET profiler timeline. `GRSP_Markers.csv` carries START / STOP timing, while `GRSP_Frames.csv` and `GRSP_Spikes.csv` include Unix timestamps for direct event correlation.
 
-BUILD
------
-GitHub Actions:
+Recommended workflow:
 
-  cargo build --release
+1. bind both profilers to the same F11 capture window;
+2. use the same scenario label/name in both runs when possible;
+3. align START markers by Unix time;
+4. compare the 50 ms timelines;
+5. inspect GRSP spike/frame rows around CET spikes;
+6. use CapFrameX for the actual rendered-frame result.
 
-Artifact:
+The three tools answer different questions:
 
-  RSP-Alpha-0.4.0-GameRoot
+```text
+GRSP       -> REDscript ownership/call structure
+CET profiler -> Lua/CET callback ownership
+CapFrameX  -> what the player actually experienced
+```
 
-The staged artifact contains:
+## Developer subset
 
-  red4ext\plugins\redscript_profiler_alpha.dll
-  red4ext\plugins\redscript_profiler_alpha\RSP_Scenario.txt
-  RSP_ALPHA_README.txt
-  RSP_ALPHA_MANIFEST.json
-  RSP_SCENARIO_MATRIX_PLAN.txt
+The `Developer` folder contains a small set useful for framework authors without restoring the old research-output flood:
 
-CREDITS / TECHNICAL BASIS
--------------------------
-Bind/source mapping and InvokeStatic / InvokeVirtual hook strategy are based on
-redscript-dap by jac3km4 (MIT). red4ext-rs is pinned to revision c44146c.
+```text
+RSP_FunctionMap.csv
+RSP_CallSites.csv
+RSP_SharedTargets.csv
+RSP_Cadence.csv
+RSP_WrapperChains.csv
+RSP_WorkMap.csv
+```
+
+`GRSP_FrameworkCandidates.csv` remains in the public root because it is useful to authors deciding whether repeated work suggests dirty/event gates, shared state, caching/indexing or wrapper consolidation.
+
+See `FRAMEWORK_AUTHOR_GUIDE.md` in the source package.
+
+## Measurement interpretation
+
+GRSP observes `InvokeStatic` / `InvokeVirtual` activity whose caller maps to `r6\scripts` mod source.
+
+It is **not** a whole-CPU profiler, GPU profiler, complete VM instruction trace, or proof that a high-ranked mod is defective.
+
+`exclusive_instrumented_ms` means:
+
+```text
+inclusive observed call time
+- time spent in nested calls also observed by GRSP
+```
+
+Uninstrumented/native/base work may still remain inside an observed boundary. This is especially important for wrapper-heavy mods. Virtual target resolution also does not always identify the concrete runtime implementation owner.
+
+## Trust gates
+
+Treat a capture as reliable when:
+
+```text
+shard_merge_ok = true
+merged_shards == observed_threads
+frame_quality = GOOD
+unresolved_static_calls is zero/negligible
+dropped_spikes = 0 or understood
+dropped_hot_paths = 0 or understood
+```
+
+## Build
+
+GitHub Actions or local Windows Rust/MSVC:
+
+```powershell
+.\BUILD_WINDOWS.ps1
+```
+
+Final DLL:
+
+```text
+target\release\redscript_profiler_alpha.dll
+```
+
+## Technical basis / credit
+
+Function/source bind mapping and the `BindFunction` + `InvokeStatic` + `InvokeVirtual` hook strategy are based on the open-source `redscript-dap` work by jekky / jac3km4 (MIT). `red4ext-rs` supplies the RED4ext Rust bindings and remains pinned to revision `c44146c` for this preview.

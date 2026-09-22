@@ -1,4 +1,4 @@
-name: Build RSP Alpha 0.3 Windows DLL
+name: Build GRSP 0.5.0 Public Preview
 
 on:
   workflow_dispatch:
@@ -22,12 +22,18 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path package\red4ext\plugins | Out-Null
+          New-Item -ItemType Directory -Force -Path package\red4ext\plugins\redscript_profiler_alpha | Out-Null
           Copy-Item target\release\redscript_profiler_alpha.dll package\red4ext\plugins\redscript_profiler_alpha.dll
-          Copy-Item README.md package\RSP_ALPHA_README.txt
-          Copy-Item MANIFEST.json package\RSP_ALPHA_MANIFEST.json
+          Copy-Item RSP_Scenario.txt package\red4ext\plugins\redscript_profiler_alpha\RSP_Scenario.txt
+          Copy-Item README.md package\GRSP_README.txt
+          Copy-Item MANIFEST.json package\GRSP_MANIFEST.json
+          Copy-Item FRAMEWORK_AUTHOR_GUIDE.md package\GRSP_FRAMEWORK_AUTHOR_GUIDE.txt
+          Copy-Item OUTPUT_SCHEMA.md package\GRSP_OUTPUT_SCHEMA.txt
+          Copy-Item PUBLIC_RELEASE_NOTES.md package\GRSP_RELEASE_NOTES.txt
+          Copy-Item THIRD_PARTY_NOTICE.txt package\GRSP_THIRD_PARTY_NOTICE.txt
 
       - name: Upload game-root artifact
         uses: actions/upload-artifact@v4
         with:
-          name: RSP-Alpha-0.3-GameRoot
+          name: GRSP-0.5.0-PublicPreview-GameRoot
           path: package

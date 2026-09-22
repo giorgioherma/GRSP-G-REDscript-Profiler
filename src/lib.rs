@@ -32,6 +32,7 @@ const HOTKEY_POLL_MS: u64 = 2;
 const SPIKE_THRESHOLD_US: u64 = 1_000;
 const MAX_SPIKE_EVENTS: usize = 100_000;
 const MAX_HOT_PATH_EVENTS: usize = 50_000;
+const PUBLIC_TIMELINE_BUCKET_MS: u64 = 50;
 const STOP_DRAIN_WAIT_MS: u64 = 10_000;
 
 const STATE_PAUSED: u8 = 0;
@@ -363,9 +364,9 @@ unsafe extern "system" {
 }
 
 impl Plugin for RedscriptProfilerAlpha {
-    const AUTHOR: &'static U16CStr = wcstr!("RSP alpha");
+    const AUTHOR: &'static U16CStr = wcstr!("GRSP");
     const NAME: &'static U16CStr = wcstr!("redscript-profiler-alpha");
-    const VERSION: SemVer = SemVer::new(0, 4, 0);
+    const VERSION: SemVer = SemVer::new(0, 5, 0);
 
     fn on_init(env: &SdkEnv) {
         init_qpc();
@@ -381,7 +382,7 @@ impl Plugin for RedscriptProfilerAlpha {
         BIND_HOOK_OK.store(bind_ok, Ordering::Release);
 
         env.info(format!(
-            "[RSP alpha 0.4.0] bind-function hook: {}",
+            "[GRSP 0.5.0] bind-function hook: {}",
             if bind_ok { "OK" } else { "FAILED" }
         ));
 
@@ -406,7 +407,7 @@ impl Plugin for RedscriptProfilerAlpha {
         FRAME_LISTENER_OK.store(frame_ok, Ordering::Release);
 
         env.info(format!(
-            "[RSP alpha 0.4.0] running-frame listener: {}",
+            "[GRSP 0.5.0] running-frame listener: {}",
             if frame_ok { "OK" } else { "FAILED" }
         ));
     }
@@ -445,7 +446,7 @@ unsafe extern "C" fn on_app_init(_app: &GameApp) {
     VIRTUAL_HOOK_OK.store(virtual_ok, Ordering::Release);
 
     env.info(format!(
-        "[RSP alpha 0.4.0] InvokeStatic hook: {} / InvokeVirtual hook: {}",
+        "[GRSP 0.5.0] InvokeStatic hook: {} / InvokeVirtual hook: {}",
         if static_ok { "OK" } else { "FAILED" },
         if virtual_ok { "OK" } else { "FAILED" }
     ));
@@ -1676,6 +1677,10 @@ fn capture_ms_from_qpc(qpc: u64) -> f64 {
     }
 }
 
+fn unix_ms_from_qpc(qpc: u64) -> f64 {
+    CAPTURE_START_UNIX_MS.load(Ordering::Relaxed) as f64 + capture_ms_from_qpc(qpc)
+}
+
 fn unix_ms_now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1855,7 +1860,7 @@ fn append_session_index(base: &Path, capture_dir: &Path) -> std::io::Result<()> 
 
     writeln!(
         w,
-        "0.4.0,{},{},{},{},{},{:.3},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+        "0.5.0,{},{},{},{},{},{:.3},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
         CAPTURE_ID.load(Ordering::Relaxed),
         csv(&capture_scenario()),
         csv(&folder),
@@ -2077,7 +2082,7 @@ fn write_status_file() -> std::io::Result<()> {
     let cross_mod_calls = cross_mod_call_total();
 
     let status = format!(
-        "RSP alpha 0.4.0 scenario-matrix profiler\n\
+        "GRSP 0.5.0 public profiler\n\
          Bind/source mapping hook: {}\n\
          InvokeStatic hook: {}\n\
          InvokeVirtual hook: {}\n\
@@ -2162,12 +2167,14 @@ fn write_status_file() -> std::io::Result<()> {
         if LAST_DUMP_OK.load(Ordering::Acquire) { "OK" } else { "NOT YET / FAILED" },
     );
 
+    fs::write(dir.join("GRSP_Status.txt"), &status)?;
     fs::write(dir.join("RSP_Alpha_Status.txt"), &status)?;
 
     let capture_folder = LAST_CAPTURE_DIR.read().clone();
     if !capture_folder.is_empty() {
         let capture_dir = dir.join(capture_folder);
         if capture_dir.exists() {
+            fs::write(capture_dir.join("GRSP_Status.txt"), &status)?;
             fs::write(capture_dir.join("RSP_Alpha_Status.txt"), &status)?;
         }
     }
@@ -2189,33 +2196,455 @@ fn dump_results() -> std::io::Result<()> {
 
     fs::create_dir_all(&base)?;
     fs::create_dir_all(&dir)?;
+    let developer_dir = dir.join("Developer");
+    fs::create_dir_all(&developer_dir)?;
     *LAST_CAPTURE_DIR.write() = capture_dir_name();
 
-    dump_capture_csv(&dir.join("RSP_Alpha_Capture.csv"))?;
-    dump_markers_csv(&dir.join("RSP_Alpha_Markers.csv"))?;
-    dump_function_map_csv(&dir.join("RSP_Alpha_FunctionMap.csv"))?;
-    dump_callsites_csv(&dir.join("RSP_Alpha_CallSites.csv"))?;
-    dump_by_owner_csv(&dir.join("RSP_Alpha_ByOwner.csv"))?;
-    dump_by_function_csv(&dir.join("RSP_Alpha_ByFunction.csv"))?;
-    dump_shared_targets_csv(&dir.join("RSP_Alpha_SharedTargets.csv"))?;
-    dump_edges_csv(&dir.join("RSP_Alpha_Edges.csv"))?;
-    dump_cadence_csv(&dir.join("RSP_Alpha_Cadence.csv"))?;
-    dump_frames_csv(&dir.join("RSP_Alpha_Frames.csv"))?;
-    dump_frame_owners_csv(&dir.join("RSP_Alpha_FrameOwners.csv"))?;
-    dump_spikes_csv(&dir.join("RSP_Alpha_Spikes.csv"))?;
-    dump_hot_paths_csv(&dir.join("RSP_Alpha_HotPaths.csv"))?;
-    dump_wrapper_chains_csv(&dir.join("RSP_Alpha_WrapperChains.csv"))?;
-    dump_work_map_csv(&dir.join("RSP_Alpha_WorkMap.csv"))?;
-    dump_threads_csv(&dir.join("RSP_Alpha_Threads.csv"))?;
-    dump_roots_csv(&dir.join("RSP_Alpha_Roots.csv"))?;
-    dump_cross_mod_edges_csv(&dir.join("RSP_Alpha_CrossModEdges.csv"))?;
-    dump_target_domains_csv(&dir.join("RSP_Alpha_TargetDomains.csv"))?;
-    dump_owner_domains_csv(&dir.join("RSP_Alpha_OwnerDomains.csv"))?;
-    dump_framework_signals_csv(&dir.join("RSP_Alpha_FrameworkSignals.csv"))?;
+    // Public-user outputs: compact, timestamped and directly useful for
+    // identifying sustained cost, stutter sources and cross-profiler timing.
+    dump_public_summary_csv(&dir.join("GRSP_Summary.csv"))?;
+    dump_public_by_mod_csv(&dir.join("GRSP_ByMod.csv"))?;
+    dump_by_function_csv(&dir.join("GRSP_ByFunction.csv"))?;
+    dump_public_timeline_csv(&dir.join("GRSP_Timeline.csv"))?;
+    dump_public_frames_csv(&dir.join("GRSP_Frames.csv"))?;
+    dump_public_spikes_csv(&dir.join("GRSP_Spikes.csv"))?;
+    dump_markers_csv(&dir.join("GRSP_Markers.csv"))?;
+    dump_framework_signals_csv(&dir.join("GRSP_FrameworkCandidates.csv"))?;
+    dump_public_report_html(&dir.join("GRSP_Report.html"))?;
+
+    // Small developer subset retained for framework authors. The profiler still
+    // collects the proven Alpha 0.4 measurement model, but public users are no
+    // longer flooded with every research CSV.
+    dump_function_map_csv(&developer_dir.join("RSP_FunctionMap.csv"))?;
+    dump_callsites_csv(&developer_dir.join("RSP_CallSites.csv"))?;
+    dump_shared_targets_csv(&developer_dir.join("RSP_SharedTargets.csv"))?;
+    dump_cadence_csv(&developer_dir.join("RSP_Cadence.csv"))?;
+    dump_wrapper_chains_csv(&developer_dir.join("RSP_WrapperChains.csv"))?;
+    dump_work_map_csv(&developer_dir.join("RSP_WorkMap.csv"))?;
 
     write_latest_pointer(&base, &dir)?;
     append_session_index(&base, &dir)?;
     Ok(())
+}
+
+
+#[derive(Debug, Clone)]
+struct PublicOwnerRow {
+    owner: String,
+    calls: u64,
+    calls_per_sec: f64,
+    exclusive_ms: f64,
+    exclusive_ms_per_sec: f64,
+    observed_share_pct: f64,
+    active_frame_pct: f64,
+    max_call_ms: f64,
+    max_frame_exclusive_ms: f64,
+    spike_count: u64,
+    max_spike_ms: f64,
+    wrapper_calls: u64,
+    pattern: &'static str,
+    attribution_note: &'static str,
+}
+
+#[derive(Debug, Default, Clone)]
+struct PublicTimelineAgg {
+    calls: u64,
+    inclusive_ticks: u64,
+    exclusive_ticks: u64,
+    max_call_ticks: u64,
+    spike_count: u64,
+    active_frames: u64,
+}
+
+fn public_owner_rows() -> Vec<PublicOwnerRow> {
+    let owners = OWNER_AGG.read();
+    let frames = FRAMES.read();
+    let frame_owners = FRAME_OWNERS.read();
+    let spikes = SPIKES.read();
+    let callsites = CALLSITES.read();
+    let funcs = FUNCTIONS.read();
+
+    let duration_s = capture_duration_s().max(0.000_001);
+    let total_frames = frames.len() as u64;
+    let total_exclusive_ticks = owners
+        .values()
+        .map(|s| s.exclusive_ticks)
+        .sum::<u64>()
+        .max(1);
+
+    let mut max_frame_exclusive: HashMap<String, u64> = HashMap::new();
+    for row in frame_owners.iter() {
+        let entry = max_frame_exclusive.entry(row.owner.clone()).or_default();
+        *entry = (*entry).max(row.exclusive_ticks);
+    }
+
+    let mut spike_counts: HashMap<String, u64> = HashMap::new();
+    let mut max_spikes: HashMap<String, u64> = HashMap::new();
+    for event in spikes.iter() {
+        if let Some(meta) = funcs.get(&event.key.caller) {
+            *spike_counts.entry(meta.owner.clone()).or_default() += 1;
+            let entry = max_spikes.entry(meta.owner.clone()).or_default();
+            *entry = (*entry).max(event.inclusive_ticks);
+        }
+    }
+
+    let mut wrapper_calls: HashMap<String, u64> = HashMap::new();
+    for (key, stat) in callsites.iter() {
+        let Some(meta) = funcs.get(&key.caller) else { continue; };
+        if meta.function.contains("wrapper$") {
+            *wrapper_calls.entry(meta.owner.clone()).or_default() += stat.calls;
+        }
+    }
+
+    let mut rows = Vec::with_capacity(owners.len());
+    for (owner, stat) in owners.iter() {
+        let exclusive_ms = ticks_to_ms(stat.exclusive_ticks);
+        let exclusive_ms_per_sec = exclusive_ms / duration_s;
+        let max_frame_ms = ticks_to_ms(max_frame_exclusive.get(owner).copied().unwrap_or(0));
+        let spike_count = spike_counts.get(owner).copied().unwrap_or(0);
+        let max_spike_ms = ticks_to_ms(max_spikes.get(owner).copied().unwrap_or(0));
+        let wrappers = wrapper_calls.get(owner).copied().unwrap_or(0);
+        let active_frame_pct = pct(stat.active_frames, total_frames);
+
+        let pattern = if exclusive_ms_per_sec >= 2.0 && max_frame_ms >= 5.0 {
+            "MIXED"
+        } else if exclusive_ms_per_sec >= 2.0 {
+            "SUSTAINED"
+        } else if max_frame_ms >= 5.0 || max_spike_ms >= 5.0 {
+            "BURSTY"
+        } else {
+            "BACKGROUND"
+        };
+
+        let attribution_note = if stat.calls > 0 && wrappers.saturating_mul(10) >= stat.calls {
+            "WRAPPER_ATTRIBUTION_CAUTION"
+        } else if max_spike_ms >= 10.0 && exclusive_ms_per_sec < 1.0 {
+            "BURST_DOMINATED"
+        } else {
+            ""
+        };
+
+        rows.push(PublicOwnerRow {
+            owner: owner.clone(),
+            calls: stat.calls,
+            calls_per_sec: stat.calls as f64 / duration_s,
+            exclusive_ms,
+            exclusive_ms_per_sec,
+            observed_share_pct: stat.exclusive_ticks as f64 * 100.0 / total_exclusive_ticks as f64,
+            active_frame_pct,
+            max_call_ms: ticks_to_ms(stat.max_inclusive_ticks),
+            max_frame_exclusive_ms: max_frame_ms,
+            spike_count,
+            max_spike_ms,
+            wrapper_calls: wrappers,
+            pattern,
+            attribution_note,
+        });
+    }
+
+    rows.sort_by(|a, b| {
+        b.exclusive_ms_per_sec
+            .partial_cmp(&a.exclusive_ms_per_sec)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    rows
+}
+
+fn frame_exclusive_percentile(percentile: f64) -> f64 {
+    let frames = FRAMES.read();
+    let mut values: Vec<f64> = frames
+        .iter()
+        .filter(|f| !f.partial)
+        .map(|f| ticks_to_ms(f.exclusive_instrumented_ticks))
+        .collect();
+    if values.is_empty() {
+        return 0.0;
+    }
+    values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let rank = ((values.len() as f64 * percentile).ceil() as usize).saturating_sub(1);
+    values[rank.min(values.len() - 1)]
+}
+
+fn dump_public_summary_csv(path: &Path) -> std::io::Result<()> {
+    let owners = public_owner_rows();
+    let frames = FRAMES.read();
+    let total_exclusive_ms: f64 = OWNER_AGG
+        .read()
+        .values()
+        .map(|s| ticks_to_ms(s.exclusive_ticks))
+        .sum();
+    let duration_s = capture_duration_s().max(0.000_001);
+    let observed_calls = LAST_OBSERVED_CALLS.load(Ordering::Relaxed);
+    let max_frame_script_ms = frames
+        .iter()
+        .map(|f| ticks_to_ms(f.exclusive_instrumented_ticks))
+        .fold(0.0_f64, f64::max);
+    let frames_over_1ms = frames
+        .iter()
+        .filter(|f| ticks_to_ms(f.exclusive_instrumented_ticks) >= 1.0)
+        .count();
+    let frames_over_5ms = frames
+        .iter()
+        .filter(|f| ticks_to_ms(f.exclusive_instrumented_ticks) >= 5.0)
+        .count();
+    let frames_over_16ms = frames
+        .iter()
+        .filter(|f| ticks_to_ms(f.exclusive_instrumented_ticks) >= 16.67)
+        .count();
+    let top_owner = owners.first().map(|r| r.owner.as_str()).unwrap_or("");
+    let top_owner_ms_per_sec = owners.first().map(|r| r.exclusive_ms_per_sec).unwrap_or(0.0);
+    let (_, _, named_static_calls, unresolved_static_calls) = static_resolution_summary();
+
+    let file = File::create(path)?;
+    let mut w = BufWriter::new(file);
+    writeln!(w, "version,capture_id,scenario,capture_key,start_unix_ms,stop_unix_ms,duration_ms,observed_calls,calls_per_sec,total_exclusive_instrumented_ms,exclusive_ms_per_sec,average_script_ms_per_frame,p95_script_ms_per_frame,p99_script_ms_per_frame,max_script_ms_per_frame,frames,frames_script_over_1ms,frames_script_over_5ms,frames_script_over_16_67ms,spike_events,top_owner,top_owner_exclusive_ms_per_sec,frame_quality,shard_merge_ok,named_static_calls,unresolved_static_calls,dropped_spikes,dropped_hot_paths,timeline_bucket_ms")?;
+    writeln!(w,
+        "0.5.0,{},{},{},{},{},{:.3},{},{:.3},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{},{},{},{},{},{},{:.6},{},{},{},{},{},{},{}",
+        CAPTURE_ID.load(Ordering::Relaxed),
+        csv(&capture_scenario()),
+        csv(&format!("GRSP-{}-{}", CAPTURE_START_UNIX_MS.load(Ordering::Relaxed), CAPTURE_ID.load(Ordering::Relaxed))),
+        CAPTURE_START_UNIX_MS.load(Ordering::Relaxed),
+        CAPTURE_STOP_UNIX_MS.load(Ordering::Relaxed),
+        CAPTURE_DURATION_US.load(Ordering::Relaxed) as f64 / 1_000.0,
+        observed_calls,
+        observed_calls as f64 / duration_s,
+        total_exclusive_ms,
+        total_exclusive_ms / duration_s,
+        if frames.is_empty() { 0.0 } else { total_exclusive_ms / frames.len() as f64 },
+        frame_exclusive_percentile(0.95),
+        frame_exclusive_percentile(0.99),
+        max_frame_script_ms,
+        frames.len(),
+        frames_over_1ms,
+        frames_over_5ms,
+        frames_over_16ms,
+        SPIKES.read().len(),
+        csv(top_owner),
+        top_owner_ms_per_sec,
+        frame_quality(),
+        LAST_SHARD_MERGE_OK.load(Ordering::Acquire),
+        named_static_calls,
+        unresolved_static_calls,
+        SPIKES_DROPPED.load(Ordering::Relaxed),
+        HOT_PATHS_DROPPED.load(Ordering::Relaxed),
+        PUBLIC_TIMELINE_BUCKET_MS,
+    )?;
+    w.flush()
+}
+
+fn dump_public_by_mod_csv(path: &Path) -> std::io::Result<()> {
+    let rows = public_owner_rows();
+    let file = File::create(path)?;
+    let mut w = BufWriter::new(file);
+    writeln!(w, "rank,capture_id,scenario,owner,calls,calls_per_sec,exclusive_instrumented_ms,exclusive_ms_per_sec,observed_exclusive_share_pct,active_frame_pct,max_call_ms,max_frame_exclusive_ms,spike_count,max_spike_ms,wrapper_calls,workload_pattern,attribution_note")?;
+    for (i, r) in rows.iter().enumerate() {
+        writeln!(w,
+            "{},{},{},{},{},{:.3},{:.6},{:.6},{:.3},{:.3},{:.6},{:.6},{},{:.6},{},{},{}",
+            i + 1,
+            CAPTURE_ID.load(Ordering::Relaxed),
+            csv(&capture_scenario()),
+            csv(&r.owner),
+            r.calls,
+            r.calls_per_sec,
+            r.exclusive_ms,
+            r.exclusive_ms_per_sec,
+            r.observed_share_pct,
+            r.active_frame_pct,
+            r.max_call_ms,
+            r.max_frame_exclusive_ms,
+            r.spike_count,
+            r.max_spike_ms,
+            r.wrapper_calls,
+            r.pattern,
+            r.attribution_note,
+        )?;
+    }
+    w.flush()
+}
+
+fn dump_public_timeline_csv(path: &Path) -> std::io::Result<()> {
+    let frames = FRAMES.read();
+    let owners = FRAME_OWNERS.read();
+    let mut frame_start_ms: HashMap<u64, f64> = HashMap::new();
+    for frame in frames.iter() {
+        frame_start_ms.insert(frame.frame_id, capture_ms_from_qpc(frame.frame_start_qpc));
+    }
+
+    let mut grouped: HashMap<(u64, String), PublicTimelineAgg> = HashMap::new();
+    for row in owners.iter() {
+        let Some(start_ms) = frame_start_ms.get(&row.frame_id).copied() else { continue; };
+        let bucket = (start_ms.max(0.0) as u64) / PUBLIC_TIMELINE_BUCKET_MS;
+        let entry = grouped.entry((bucket, row.owner.clone())).or_default();
+        entry.calls = entry.calls.saturating_add(row.calls);
+        entry.inclusive_ticks = entry.inclusive_ticks.saturating_add(row.inclusive_ticks);
+        entry.exclusive_ticks = entry.exclusive_ticks.saturating_add(row.exclusive_ticks);
+        entry.max_call_ticks = entry.max_call_ticks.max(row.max_call_ticks);
+        entry.spike_count = entry.spike_count.saturating_add(row.spike_count);
+        entry.active_frames = entry.active_frames.saturating_add(1);
+    }
+
+    let mut rows: Vec<_> = grouped.into_iter().collect();
+    rows.sort_by(|a, b| {
+        a.0.0.cmp(&b.0.0).then_with(|| b.1.exclusive_ticks.cmp(&a.1.exclusive_ticks))
+    });
+
+    let capture_start_unix = CAPTURE_START_UNIX_MS.load(Ordering::Relaxed) as f64;
+    let file = File::create(path)?;
+    let mut w = BufWriter::new(file);
+    writeln!(w, "capture_id,scenario,bucket_index,bucket_start_ms,bucket_end_ms,bucket_start_unix_ms,bucket_end_unix_ms,owner,calls,observed_inclusive_ms,exclusive_instrumented_ms,max_call_ms,spike_count,active_frames")?;
+    for ((bucket, owner), stat) in rows {
+        let start_ms = bucket * PUBLIC_TIMELINE_BUCKET_MS;
+        let end_ms = start_ms + PUBLIC_TIMELINE_BUCKET_MS;
+        writeln!(w,
+            "{},{},{},{},{},{:.3},{:.3},{},{},{:.6},{:.6},{:.6},{},{}",
+            CAPTURE_ID.load(Ordering::Relaxed),
+            csv(&capture_scenario()),
+            bucket,
+            start_ms,
+            end_ms,
+            capture_start_unix + start_ms as f64,
+            capture_start_unix + end_ms as f64,
+            csv(&owner),
+            stat.calls,
+            ticks_to_ms(stat.inclusive_ticks),
+            ticks_to_ms(stat.exclusive_ticks),
+            ticks_to_ms(stat.max_call_ticks),
+            stat.spike_count,
+            stat.active_frames,
+        )?;
+    }
+    w.flush()
+}
+
+fn dump_public_frames_csv(path: &Path) -> std::io::Result<()> {
+    let frames = FRAMES.read();
+    let file = File::create(path)?;
+    let mut w = BufWriter::new(file);
+    writeln!(w, "capture_id,scenario,frame_id,frame_start_ms,frame_end_ms,frame_start_unix_ms,frame_end_unix_ms,frame_duration_ms,total_calls,unique_owners,max_call_depth,observed_inclusive_ms,exclusive_instrumented_ms,largest_call_ms,spike_count,partial")?;
+    for f in frames.iter() {
+        writeln!(w,
+            "{},{},{},{:.3},{:.3},{:.3},{:.3},{:.3},{},{},{},{:.6},{:.6},{:.6},{},{}",
+            CAPTURE_ID.load(Ordering::Relaxed),
+            csv(&capture_scenario()),
+            f.frame_id,
+            capture_ms_from_qpc(f.frame_start_qpc),
+            capture_ms_from_qpc(f.frame_end_qpc),
+            unix_ms_from_qpc(f.frame_start_qpc),
+            unix_ms_from_qpc(f.frame_end_qpc),
+            ticks_to_ms(f.frame_end_qpc.saturating_sub(f.frame_start_qpc)),
+            f.total_calls,
+            f.unique_owners,
+            f.max_call_depth,
+            ticks_to_ms(f.observed_inclusive_ticks),
+            ticks_to_ms(f.exclusive_instrumented_ticks),
+            ticks_to_ms(f.largest_call_ticks),
+            f.spike_count,
+            f.partial,
+        )?;
+    }
+    w.flush()
+}
+
+fn dump_public_spikes_csv(path: &Path) -> std::io::Result<()> {
+    let funcs = FUNCTIONS.read();
+    let targets = TARGET_NAMES.read();
+    let mut spikes = SPIKES.read().clone();
+    spikes.sort_by_key(|e| e.qpc);
+
+    let file = File::create(path)?;
+    let mut w = BufWriter::new(file);
+    writeln!(w, "capture_id,scenario,capture_ms,unix_ms,frame_id,thread_id,stable_callsite_id,owner,source_path,source_function,source_line,call_kind,target,duration_ms,exclusive_instrumented_ms,depth,threshold")?;
+    for e in spikes {
+        let Some(meta) = funcs.get(&e.key.caller) else { continue; };
+        let target = target_info(e.key, &funcs, &targets);
+        let duration_ms = ticks_to_ms(e.inclusive_ticks);
+        let threshold = if duration_ms >= 16.67 { ">=16.67ms" } else if duration_ms >= 5.0 { ">=5ms" } else { ">=1ms" };
+        writeln!(w,
+            "{},{},{:.3},{:.3},{},{},RSPC-{:016X},{},{},{},{},{},{},{:.6},{:.6},{},{}",
+            CAPTURE_ID.load(Ordering::Relaxed),
+            csv(&capture_scenario()),
+            capture_ms_from_qpc(e.qpc),
+            unix_ms_from_qpc(e.qpc),
+            e.frame_id,
+            e.thread_id,
+            stable_callsite_hash(meta, e.key, &target),
+            csv(&meta.owner),
+            csv(&meta.source_path),
+            csv(&meta.function),
+            e.key.line,
+            call_kind(e.key.kind),
+            csv(&target.display),
+            duration_ms,
+            ticks_to_ms(e.exclusive_ticks),
+            e.depth,
+            threshold,
+        )?;
+    }
+    w.flush()
+}
+
+fn html_escape(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+fn dump_public_report_html(path: &Path) -> std::io::Result<()> {
+    let owner_rows = public_owner_rows();
+    let duration_s = capture_duration_s().max(0.000_001);
+    let total_exclusive_ms: f64 = OWNER_AGG.read().values().map(|s| ticks_to_ms(s.exclusive_ticks)).sum();
+    let frames = FRAMES.read();
+    let calls_per_sec = LAST_OBSERVED_CALLS.load(Ordering::Relaxed) as f64 / duration_s;
+    let max_owner_rate = owner_rows.first().map(|r| r.exclusive_ms_per_sec).unwrap_or(1.0).max(0.001);
+    let top_owner = owner_rows.first().map(|r| r.owner.as_str()).unwrap_or("None");
+
+    let mut burst_rows = owner_rows.clone();
+    burst_rows.sort_by(|a, b| b.max_frame_exclusive_ms.partial_cmp(&a.max_frame_exclusive_ms).unwrap_or(std::cmp::Ordering::Equal));
+
+    let funcs = FUNCTIONS.read();
+    let targets = TARGET_NAMES.read();
+    let mut spike_events = SPIKES.read().clone();
+    spike_events.sort_by(|a, b| b.inclusive_ticks.cmp(&a.inclusive_ticks));
+
+    let mut html = String::new();
+    html.push_str("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
+    html.push_str("<title>GRSP Report</title><style>body{font-family:Segoe UI,Arial,sans-serif;background:#101318;color:#e8edf2;margin:0;padding:28px}h1,h2{margin:0 0 14px}h1{font-size:28px}.muted{color:#9aa7b4}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:18px 0}.card,.panel{background:#171c23;border:1px solid #28313c;border-radius:10px;padding:14px}.big{font-size:24px;font-weight:700}.barrow{display:grid;grid-template-columns:minmax(170px,280px) 1fr 105px;gap:10px;align-items:center;margin:7px 0}.bar{height:18px;background:#252e38;border-radius:4px;overflow:hidden}.fill{height:100%;background:linear-gradient(90deg,#28b8d8,#68d391)}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:7px;border-bottom:1px solid #28313c}th{color:#9fd8e8}.warn{color:#ffd166}.good{color:#68d391}a{color:#70c9e8}code{background:#0c0f13;padding:2px 4px;border-radius:4px}.grid{display:grid;grid-template-columns:1fr;gap:16px}@media(min-width:1100px){.grid{grid-template-columns:1fr 1fr}} </style></head><body>");
+    html.push_str(&format!("<h1>GRSP 0.5.0 — {}</h1><div class=\"muted\">Capture {} · {:.2} s · start Unix ms {}</div>", html_escape(&capture_scenario()), CAPTURE_ID.load(Ordering::Relaxed), duration_s, CAPTURE_START_UNIX_MS.load(Ordering::Relaxed)));
+    html.push_str("<div class=\"cards\">");
+    html.push_str(&format!("<div class=\"card\"><div class=\"muted\">Observed calls / sec</div><div class=\"big\">{:.0}</div></div>", calls_per_sec));
+    html.push_str(&format!("<div class=\"card\"><div class=\"muted\">Observed REDscript exclusive / sec</div><div class=\"big\">{:.2} ms</div></div>", total_exclusive_ms / duration_s));
+    html.push_str(&format!("<div class=\"card\"><div class=\"muted\">P99 script work / frame</div><div class=\"big\">{:.2} ms</div></div>", frame_exclusive_percentile(0.99)));
+    html.push_str(&format!("<div class=\"card\"><div class=\"muted\">Top observed owner</div><div class=\"big\">{}</div></div>", html_escape(top_owner)));
+    html.push_str("</div>");
+
+    html.push_str("<div class=\"panel\"><h2>Top mods by sustained observed REDscript cost</h2><div class=\"muted\">Bar = exclusive instrumented milliseconds per captured second. This is REDscript-side evidence, not whole-game CPU/GPU usage.</div>");
+    for row in owner_rows.iter().take(20) {
+        let width = (row.exclusive_ms_per_sec / max_owner_rate * 100.0).clamp(0.5, 100.0);
+        html.push_str(&format!("<div class=\"barrow\"><div>{}</div><div class=\"bar\"><div class=\"fill\" style=\"width:{:.1}%\"></div></div><div>{:.2} ms/s</div></div>", html_escape(&row.owner), width, row.exclusive_ms_per_sec));
+    }
+    html.push_str("</div>");
+
+    html.push_str("<div class=\"grid\"><div class=\"panel\"><h2>Largest owner bursts</h2><table><tr><th>Mod</th><th>Max frame exclusive</th><th>Max call</th><th>Pattern</th></tr>");
+    for row in burst_rows.iter().take(15) {
+        html.push_str(&format!("<tr><td>{}</td><td>{:.2} ms</td><td>{:.2} ms</td><td>{}</td></tr>", html_escape(&row.owner), row.max_frame_exclusive_ms, row.max_call_ms, row.pattern));
+    }
+    html.push_str("</table></div><div class=\"panel\"><h2>Largest observed call events</h2><table><tr><th>Time</th><th>Mod</th><th>Function → target</th><th>Duration</th><th>Exclusive</th></tr>");
+    for event in spike_events.iter().take(15) {
+        let Some(meta) = funcs.get(&event.key.caller) else { continue; };
+        let target = target_info(event.key, &funcs, &targets);
+        html.push_str(&format!("<tr><td>{:.3} s</td><td>{}</td><td>{} → {}</td><td>{:.2} ms</td><td>{:.2} ms</td></tr>", capture_ms_from_qpc(event.qpc) / 1000.0, html_escape(&meta.owner), html_escape(&meta.function), html_escape(&target.display), ticks_to_ms(event.inclusive_ticks), ticks_to_ms(event.exclusive_ticks)));
+    }
+    html.push_str("</table></div></div>");
+
+    let frames_over_5 = frames.iter().filter(|f| ticks_to_ms(f.exclusive_instrumented_ticks) >= 5.0).count();
+    let frames_over_16 = frames.iter().filter(|f| ticks_to_ms(f.exclusive_instrumented_ticks) >= 16.67).count();
+    html.push_str(&format!("<div class=\"panel\"><h2>Capture health and timing</h2><p>Frame quality: <b>{}</b> · shard merge: <b>{}</b> · script-heavy frames ≥5 ms: <b>{}</b> · ≥16.67 ms: <b>{}</b>.</p>", frame_quality(), LAST_SHARD_MERGE_OK.load(Ordering::Acquire), frames_over_5, frames_over_16));
+    html.push_str(&format!("<p>Cross-profiler sync: <code>GRSP_Markers.csv</code>, <code>GRSP_Timeline.csv</code> ({:?} ms buckets), <code>GRSP_Frames.csv</code> and <code>GRSP_Spikes.csv</code> all carry capture-relative and/or Unix timestamps. Pair them with CET profiler markers/timeline using the same F11 window.</p>", PUBLIC_TIMELINE_BUCKET_MS));
+    html.push_str("<p class=\"warn\"><b>Interpretation caution:</b> a high row does not automatically mean a mod is badly written or safe to remove. Dependencies, wrapper chains, native/base work inside an observed boundary and workload context all matter. The report intentionally ranks measured contribution rather than issuing removal recommendations.</p>");
+    html.push_str("<p>For framework work, inspect <a href=\"GRSP_FrameworkCandidates.csv\">GRSP_FrameworkCandidates.csv</a> plus the compact <a href=\"Developer/RSP_Cadence.csv\">Developer cadence</a>, <a href=\"Developer/RSP_SharedTargets.csv\">shared-target</a>, and <a href=\"Developer/RSP_WrapperChains.csv\">wrapper-chain</a> exports.</p></div>");
+    html.push_str("</body></html>");
+    fs::write(path, html)
 }
 
 fn dump_capture_csv(path: &Path) -> std::io::Result<()> {
@@ -2231,7 +2660,7 @@ fn dump_capture_csv(path: &Path) -> std::io::Result<()> {
     writeln!(w, "capture_id,version,scenario,capture_folder,state,start_unix_ms,stop_unix_ms,start_qpc,stop_qpc,quiescent_qpc,qpc_frequency,duration_ms,stop_drain_ms,hotkey,hotkey_poll_ms,mapped_mod_functions,observed_threads,merged_shards,frame_callbacks,frame_quality,frame_rows,callsite_rows,observed_calls,intrinsic_calls,wrapper_calls,semantic_calls,framework_shared_calls,root_calls,descendant_calls,cross_mod_calls,owner_rows,function_rows,spike_rows,hot_path_rows,dropped_spikes,dropped_hot_paths,named_static_targets,unresolved_static_targets,named_static_calls,unresolved_static_calls,shard_merge_ok")?;
     writeln!(
         w,
-        "{},0.4.0,{},{},{},{},{},{},{},{},{},{:.3},{:.3},F11,{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+        "{},0.5.0,{},{},{},{},{},{},{},{},{},{:.3},{:.3},F11,{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
         CAPTURE_ID.load(Ordering::Relaxed),
         csv(&capture_scenario()),
         csv(&capture_dir_name()),

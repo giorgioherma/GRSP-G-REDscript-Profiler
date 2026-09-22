@@ -1,18 +1,11 @@
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
 
 if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
-    Write-Host "Rust/Cargo is not installed."
-    Write-Host "Use the included GitHub Actions workflow, or install Rust + MSVC build tools first."
-    exit 1
+    throw 'Rust/Cargo was not found. Install Rust and the Windows MSVC build toolchain, or use GitHub Actions.'
 }
 
 cargo build --release
 
-$dll = Join-Path $PSScriptRoot "target\release\redscript_profiler_alpha.dll"
-if (-not (Test-Path $dll)) {
-    throw "Build finished but DLL was not found: $dll"
-}
-
-Write-Host ""
-Write-Host "Built:"
-Write-Host $dll
+Write-Host ''
+Write-Host 'Built GRSP 0.5.0 Public Preview:' -ForegroundColor Green
+Write-Host '  target\release\redscript_profiler_alpha.dll'
