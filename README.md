@@ -64,11 +64,11 @@ Changed or unknown user files are not blindly overwritten during install or rest
 Headless use is available through the same EXE, for example:
 
 ```text
-G-REDscript-Profiler.exe --action status --game-root "D:\Games\Cyberpunk 2077"
-G-REDscript-Profiler.exe --action install --game-root "D:\Games\Cyberpunk 2077"
-G-REDscript-Profiler.exe --action scenario --game-root "D:\Games\Cyberpunk 2077" --scenario COMBAT
-G-REDscript-Profiler.exe --action collect --game-root "D:\Games\Cyberpunk 2077"
-G-REDscript-Profiler.exe --action restore --game-root "D:\Games\Cyberpunk 2077"
+G-REDscript-Profiler.exe --status --game "D:\Games\Cyberpunk 2077" --json
+G-REDscript-Profiler.exe --install --game "D:\Games\Cyberpunk 2077" --json
+G-REDscript-Profiler.exe --scenario --game "D:\Games\Cyberpunk 2077" --scenario COMBAT --json
+G-REDscript-Profiler.exe --collect --game "D:\Games\Cyberpunk 2077" --json
+G-REDscript-Profiler.exe --restore --game "D:\Games\Cyberpunk 2077" --json
 ```
 
 The internal DLL name remains `redscript_profiler_alpha.dll` in 0.5.0 so existing Alpha installations are replaced instead of loading two profilers at once.
@@ -241,10 +241,10 @@ The profiler DLL still builds with Rust/MSVC:
 .\BUILD_WINDOWS.ps1
 ```
 
-The standalone manager is .NET 8 WinForms:
+The standalone manager is a self-contained .NET 8 WinForms win-x64 build:
 
 ```powershell
-dotnet publish manager\GRedscriptProfiler.Manager.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true
+dotnet publish manager\GRedscriptProfiler.Manager.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
 ```
 
 Measurement remains entirely in:
