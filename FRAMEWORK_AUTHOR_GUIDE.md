@@ -18,6 +18,23 @@ Developer/RSP_CallSites.csv
 
 Do not optimize from raw call count alone. High-frequency callbacks may be latency-critical. In particular, AI/NPC combat and reaction paths should normally keep their native cadence; make each call cheaper before considering throttling.
 
+## Compatibility rule for shared frameworks
+
+Treat the installed mod layout and public surface as inputs, not as a format that mods must convert into.
+
+A shared runtime should therefore:
+
+```text
+keep third-party files at their normal r6/scripts paths
+keep existing modules/classes/public methods stable unless a proven fix requires otherwise
+require no GRSP-specific or framework-specific manifest from the mod
+keep optional-mod adapters outside the framework core when they reference optional types
+ship integrations as in-place differential overlays, not repackaged shadow copies
+remain dormant when no integration consumes a service
+```
+
+"Unchanged mod format" does not mean every third-party source file must remain byte-identical. A measured integration may change implementation code, but it should preserve the mod's normal package structure and external compatibility contract.
+
 ## Common patterns
 
 ### High duty / polling
