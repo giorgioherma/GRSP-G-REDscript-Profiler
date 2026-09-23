@@ -1,4 +1,4 @@
-GRSP 0.5.0 Public Preview — G-REDscript Profiler
+GRSP 1.0.0 — G-REDscript Profiler
 
 Technical basis:
 - redscript-dap by jekky / jac3km4 (MIT): FunctionInfo / SourceFileInfo binding and the proven BindFunction + InvokeStatic + InvokeVirtual interception approach.
