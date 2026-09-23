@@ -12,6 +12,7 @@ on:
 
 jobs:
   build:
+    if: github.event_name != 'push' || github.event.head_commit.message != 'Publish v1.0.0 release only'
     runs-on: windows-latest
 
     steps:
