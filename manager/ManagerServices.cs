@@ -8,7 +8,11 @@ namespace GRedscriptProfiler.Manager;
 internal static class ManagerServices
 {
     public const string ProductVersion = "0.5.0 Public Preview";
-    public const string StateFileName = ".grsp_manager_state.json";
+    public const string PluginFileName = "G-REDscript-Profiler.dll";
+    public const string DataFolderName = "G-REDscript-Profiler";
+    public const string CaptureTitleFileName = "CaptureTitle.txt";
+    public const string StateFileName = ".manager_state.json";
+
     public static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -16,8 +20,8 @@ internal static class ManagerServices
     };
 
     public static string PayloadDirectory => Path.Combine(AppContext.BaseDirectory, "payload");
-    public static string PayloadDll => Path.Combine(PayloadDirectory, "redscript_profiler_alpha.dll");
-    public static string PayloadScenario => Path.Combine(PayloadDirectory, "RSP_Scenario.txt");
+    public static string PayloadDll => Path.Combine(PayloadDirectory, PluginFileName);
+    public static string PayloadCaptureTitle => Path.Combine(PayloadDirectory, CaptureTitleFileName);
     public static string ArchiveResultsDirectory => Path.Combine(AppContext.BaseDirectory, "RESULTS");
 
     public static bool IsGameRunning()
@@ -36,10 +40,8 @@ internal static class ManagerServices
             return status;
         }
 
-        var exe = GameExe(gameRoot);
-        var red4ext = Path.Combine(gameRoot, "red4ext");
-        status.GameRootValid = File.Exists(exe);
-        status.Red4extPresent = Directory.Exists(red4ext);
+        status.GameRootValid = File.Exists(GameExe(gameRoot));
+        status.Red4extPresent = Directory.Exists(Path.Combine(gameRoot, "red4ext"));
         status.PayloadPresent = File.Exists(PayloadDll);
         status.PayloadHash = status.PayloadPresent ? Sha256(PayloadDll) : "";
 
@@ -47,389 +49,345 @@ internal static class ManagerServices
         var statePath = StatePath(gameRoot);
         status.DllPresent = File.Exists(target);
         status.InstalledHash = status.DllPresent ? Sha256(target) : "";
+        status.DllMatchesCurrentPackage =
+            status.DllPresent &&
+            status.PayloadPresent &&
+            string.Equals(status.InstalledHash, status.PayloadHash, StringComparison.OrdinalIgnoreCase);
         status.ManagedStatePresent = File.Exists(statePath);
 
         GrspManagerState? state = null;
         if (status.ManagedStatePresent)
         {
-            try { state = LoadState(statePath); }
+            try
+            {
+                state = LoadState(statePath);
+            }
             catch (Exception ex)
             {
                 status.State = "INVALID_MANAGED_STATE";
-                status.Message = ex.Message;
+                status.Message = "GRSP manager state is invalid: " + ex.Message;
             }
         }
 
         if (state is not null)
         {
-            status.OriginalDllMode = state.DllMode;
             status.ManagedInstalledHash = state.InstalledDllHash;
-            status.ScenarioOwnership = state.ScenarioMode;
             if (!status.DllPresent)
             {
                 status.State = "MANAGED_DLL_MISSING";
-                status.Message = "Managed state exists but the installed GRSP DLL is missing.";
+                status.Message = "This package has managed state, but G-REDscript-Profiler.dll is missing. Use Restore Original State before reinstalling.";
             }
             else if (!string.Equals(status.InstalledHash, state.InstalledDllHash, StringComparison.OrdinalIgnoreCase))
             {
                 status.State = "MANAGED_DLL_CHANGED";
-                status.Message = "Managed state exists but the installed DLL changed outside this manager.";
+                status.Message = "The managed G-REDscript-Profiler.dll changed after installation. It will not be overwritten or deleted.";
             }
-            else if (status.PayloadPresent && string.Equals(status.InstalledHash, status.PayloadHash, StringComparison.OrdinalIgnoreCase))
+            else if (status.DllMatchesCurrentPackage)
             {
                 status.State = "INSTALLED_CURRENT";
-                status.Message = "GRSP is installed and matches this package.";
+                status.Message = "G-REDscript Profiler is installed and ready.";
             }
             else
             {
                 status.State = "INSTALLED_OTHER_PACKAGE";
-                status.Message = "GRSP is managed, but this package contains a different DLL build.";
+                status.Message = "A different managed G-REDscript Profiler build is installed. Restore it before installing this package.";
             }
         }
-        else if (!status.ManagedStatePresent && status.DllPresent)
+        else if (status.DllPresent)
         {
-            if (status.PayloadPresent && string.Equals(status.InstalledHash, status.PayloadHash, StringComparison.OrdinalIgnoreCase))
+            if (status.DllMatchesCurrentPackage)
             {
-                status.State = "PREEXISTING_SAME";
-                status.Message = "The exact packaged GRSP DLL is already installed, but is not managed by this package.";
+                status.State = "PREEXISTING_CURRENT";
+                status.Message = "This exact G-REDscript Profiler build is already installed. Nothing will be installed over it; you can run the profiler.";
             }
             else
             {
-                status.State = "UNKNOWN_DLL";
-                status.Message = "A different redscript_profiler_alpha.dll is installed. Install will back it up and verify the backup before replacement.";
+                status.State = "INSTALLED_OTHER_VERSION";
+                status.Message = "A version of G-REDscript Profiler is already installed. Installation is blocked so it is never overwritten.";
             }
         }
-        else if (!status.ManagedStatePresent && string.IsNullOrEmpty(status.State))
+        else if (string.IsNullOrEmpty(status.State))
         {
-            status.State = "NOT_INSTALLED";
-            status.Message = "GRSP is not installed.";
+            if (DirectoryHasEntries(DataDirectory(gameRoot)))
+            {
+                status.State = "STALE_DATA";
+                status.Message = "The G-REDscript-Profiler data folder contains files from another or incomplete installation. It will not be overwritten.";
+            }
+            else
+            {
+                status.State = "NOT_INSTALLED";
+                status.Message = "G-REDscript Profiler is not installed.";
+            }
         }
 
-        var scenario = ScenarioPath(gameRoot);
-        status.ScenarioPresent = File.Exists(scenario);
-        status.Scenario = status.ScenarioPresent ? ReadScenarioLabel(scenario) : ReadPayloadScenario();
+        var titlePath = CaptureTitlePath(gameRoot);
+        status.CaptureTitlePresent = File.Exists(titlePath);
+        status.CaptureTitle = status.CaptureTitlePresent
+            ? ReadCaptureTitle(titlePath)
+            : ReadPayloadCaptureTitle();
+
         status.NativeResultsPath = NativeResultsPath(gameRoot);
         status.LatestCapture = LatestCompletedCapture(gameRoot) ?? "";
         status.CompletedCaptureCount = Directory.Exists(status.NativeResultsPath)
             ? Directory.EnumerateDirectories(status.NativeResultsPath, "Capture_*", SearchOption.TopDirectoryOnly)
                 .Count(IsCompletedCapture)
             : 0;
+
         return status;
     }
 
-    public static InstallResult InstallOrUpdate(string gameRoot)
+    public static InstallResult Install(string gameRoot)
     {
         EnsureInstallPreconditions(gameRoot);
 
-        var payloadHash = Sha256(PayloadDll);
-        var pluginDir = PluginDirectory(gameRoot);
-        Directory.CreateDirectory(pluginDir);
-
         var target = TargetDll(gameRoot);
+        var dataDir = DataDirectory(gameRoot);
         var statePath = StatePath(gameRoot);
 
-        if (File.Exists(statePath))
-        {
-            var existingState = LoadState(statePath);
-            if (!File.Exists(target))
-                throw new InvalidOperationException("Managed state exists but the installed DLL is missing. Restore/reconcile before reinstalling.");
-
-            var currentHash = Sha256(target);
-            if (!string.Equals(currentHash, existingState.InstalledDllHash, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("Installed GRSP DLL changed outside the manager. It will not be overwritten.");
-
-            if (!string.Equals(currentHash, payloadHash, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException(
-                    "This game is managed by a different GRSP package build. Restore it with its current manager state, then install this package. The manager will not overwrite a different managed build in place.");
-
-            return new InstallResult("already-managed", target, ScenarioPath(gameRoot), payloadHash);
-        }
-
-        var dllMode = "added";
-        var originalDllHash = "";
-        var dllBackup = "";
         if (File.Exists(target))
         {
-            originalDllHash = Sha256(target);
-            if (string.Equals(originalDllHash, payloadHash, StringComparison.OrdinalIgnoreCase))
-            {
-                dllMode = "preexisting-same";
-            }
-            else
-            {
-                dllMode = "replaced";
-                dllBackup = DllBackupPath(gameRoot);
-                if (File.Exists(dllBackup))
-                    throw new InvalidOperationException($"Refusing to overwrite an untracked DLL backup: {dllBackup}");
-                CopyFileVerified(target, dllBackup);
-            }
+            var installedHash = Sha256(target);
+            var packagedHash = Sha256(PayloadDll);
+            if (string.Equals(installedHash, packagedHash, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(
+                    "This exact G-REDscript Profiler build is already installed. Nothing was overwritten. You can run the profiler.");
+
+            throw new InvalidOperationException(
+                "A version of G-REDscript Profiler is already installed. Restore/remove that installation first. This installer never overwrites an existing profiler DLL.");
         }
 
-        var scenarioPath = ScenarioPath(gameRoot);
-        var scenarioMode = File.Exists(scenarioPath) ? "preexisting" : "added";
-        var originalScenarioHash = "";
-        var scenarioBackup = "";
-        var defaultScenarioHash = "";
+        if (File.Exists(statePath))
+            throw new InvalidOperationException("A previous GRSP manager state remains. Use Restore Original State before reinstalling.");
 
-        if (scenarioMode == "preexisting")
-        {
-            originalScenarioHash = Sha256(scenarioPath);
-            scenarioBackup = ScenarioBackupPath(gameRoot);
-            if (File.Exists(scenarioBackup))
-                throw new InvalidOperationException($"Refusing to overwrite an untracked scenario backup: {scenarioBackup}");
-            CopyFileVerified(scenarioPath, scenarioBackup);
-        }
-        else
-        {
-            if (!File.Exists(PayloadScenario))
-                throw new FileNotFoundException("Packaged RSP_Scenario.txt is missing.", PayloadScenario);
-            defaultScenarioHash = Sha256(PayloadScenario);
-        }
+        if (DirectoryHasEntries(dataDir))
+            throw new InvalidOperationException(
+                "The G-REDscript-Profiler data folder is not empty. Installation stopped before changing anything.");
 
+        Directory.CreateDirectory(dataDir);
+
+        var dllHash = Sha256(PayloadDll);
+        var titleHash = Sha256(PayloadCaptureTitle);
         var state = new GrspManagerState
         {
-            FormatVersion = 1,
+            FormatVersion = 2,
             PackageVersion = ProductVersion,
             CreatedUtc = DateTime.UtcNow,
-            DllMode = dllMode,
-            OriginalDllHash = originalDllHash,
-            InstalledDllHash = payloadHash,
-            DllBackupPath = dllBackup,
-            ScenarioMode = scenarioMode,
-            OriginalScenarioHash = originalScenarioHash,
-            ScenarioBackupPath = scenarioBackup,
-            InstalledDefaultScenarioHash = defaultScenarioHash,
-            ManagedScenarioHash = ""
+            InstalledDllHash = dllHash,
+            InstalledCaptureTitleHash = titleHash,
+            ManagedCaptureTitleHash = titleHash
         };
 
-        // Persist recovery metadata after verified backups and before the first user-owned mutation.
+        // Record ownership before adding the first managed game file. If installation
+        // is interrupted, Restore can safely remove only this profiler-owned scope.
         SaveState(statePath, state);
 
-        if (!string.Equals(dllMode, "preexisting-same", StringComparison.OrdinalIgnoreCase))
-            CopyFileVerified(PayloadDll, target, overwrite: true);
-        else if (!string.Equals(Sha256(target), payloadHash, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Pre-existing GRSP DLL changed during installation.");
+        if (File.Exists(target))
+            throw new InvalidOperationException("G-REDscript-Profiler.dll appeared during installation; refusing to overwrite it.");
 
-        if (scenarioMode == "added")
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(scenarioPath)!);
-            if (File.Exists(scenarioPath))
-                throw new InvalidOperationException("Scenario file appeared during installation; refusing to overwrite it.");
-            CopyFileVerified(PayloadScenario, scenarioPath);
-        }
+        CopyFileVerified(PayloadDll, target);
 
-        return new InstallResult(dllMode, target, scenarioPath, payloadHash);
+        var titlePath = CaptureTitlePath(gameRoot);
+        if (File.Exists(titlePath))
+            throw new InvalidOperationException("CaptureTitle.txt appeared during installation; refusing to overwrite it.");
+
+        CopyFileVerified(PayloadCaptureTitle, titlePath);
+        Directory.CreateDirectory(NativeResultsPath(gameRoot));
+
+        return new InstallResult("installed", target, dataDir, dllHash);
     }
 
-    public static string SaveScenario(string gameRoot, string scenario)
+    // Compatibility alias for the first manager preview and TOTAL prototypes.
+    public static InstallResult InstallOrUpdate(string gameRoot) => Install(gameRoot);
+
+    public static string SaveCaptureTitle(string gameRoot, string captureTitle)
     {
         EnsureValidRoot(gameRoot);
-        if (IsGameRunning())
-            throw new InvalidOperationException("Close Cyberpunk 2077 before changing the scenario file.");
 
-        var statePath = StatePath(gameRoot);
-        if (!File.Exists(statePath))
-            throw new InvalidOperationException("GRSP is not managed by this package. Install it before using manager scenario editing.");
+        if (!File.Exists(TargetDll(gameRoot)))
+            throw new InvalidOperationException("G-REDscript Profiler is not installed.");
 
-        var state = LoadState(statePath);
-        var path = ScenarioPath(gameRoot);
+        if (!File.Exists(PayloadDll) ||
+            !string.Equals(Sha256(TargetDll(gameRoot)), Sha256(PayloadDll), StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Capture title editing is available only for the exact profiler build bundled with this manager.");
+
+        var path = CaptureTitlePath(gameRoot);
         if (!File.Exists(path))
-            throw new InvalidOperationException("Managed scenario file is missing.");
+            throw new InvalidOperationException("CaptureTitle.txt is missing from the installed profiler data folder.");
 
-        var currentHash = Sha256(path);
-        var expectedHashes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (!string.IsNullOrWhiteSpace(state.OriginalScenarioHash)) expectedHashes.Add(state.OriginalScenarioHash);
-        if (!string.IsNullOrWhiteSpace(state.InstalledDefaultScenarioHash)) expectedHashes.Add(state.InstalledDefaultScenarioHash);
-        if (!string.IsNullOrWhiteSpace(state.ManagedScenarioHash)) expectedHashes.Add(state.ManagedScenarioHash);
-        if (expectedHashes.Count > 0 && !expectedHashes.Contains(currentHash))
-            throw new InvalidOperationException("Scenario file changed outside the manager. It will not be overwritten.");
-
-        var clean = SafeScenario(scenario);
+        var clean = SafeCaptureTitle(captureTitle);
         var text = clean + Environment.NewLine;
-        var bytes = Encoding.UTF8.GetBytes(text);
-
-        // Record the exact manager-owned result before mutating the user-visible file.
-        state.ManagedScenarioHash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
-        SaveState(statePath, state);
         WriteTextVerified(path, text);
 
-        if (!string.Equals(Sha256(path), state.ManagedScenarioHash, StringComparison.OrdinalIgnoreCase))
-            throw new IOException("Scenario file did not match the prepared managed hash after write.");
+        var statePath = StatePath(gameRoot);
+        if (File.Exists(statePath))
+        {
+            var state = LoadState(statePath);
+            state.ManagedCaptureTitleHash = Sha256(path);
+            SaveState(statePath, state);
+        }
+
         return clean;
     }
+
+    // Legacy headless alias. The UI now calls this value a capture title.
+    public static string SaveScenario(string gameRoot, string scenario) =>
+        SaveCaptureTitle(gameRoot, scenario);
 
     public static string Restore(string gameRoot)
     {
         EnsureValidRoot(gameRoot);
         if (IsGameRunning())
-            throw new InvalidOperationException("Close Cyberpunk 2077 before restoring/uninstalling GRSP.");
+            throw new InvalidOperationException("Close Cyberpunk 2077 before restoring G-REDscript Profiler.");
 
         var statePath = StatePath(gameRoot);
         if (!File.Exists(statePath))
-            return "No GRSP Manager state was found; nothing was changed.";
+            return "No managed G-REDscript Profiler installation was found. Nothing was changed.";
 
         var state = LoadState(statePath);
         var target = TargetDll(gameRoot);
-        var scenario = ScenarioPath(gameRoot);
 
-        // Preflight everything first so a conflict cannot leave a half-restored installation.
-        // Also recognize a transaction interrupted after state/backups were written but before
-        // the packaged DLL fully replaced the target.
-        var dllAction = "none";
-        if (state.DllMode == "added")
-        {
-            if (!File.Exists(target))
-            {
-                dllAction = "none"; // install never reached the DLL copy
-            }
-            else if (string.Equals(Sha256(target), state.InstalledDllHash, StringComparison.OrdinalIgnoreCase))
-            {
-                dllAction = "remove-owned";
-            }
-            else
-            {
-                throw new InvalidOperationException("Installed GRSP DLL changed outside the manager. Restore stopped without overwriting it.");
-            }
-        }
-        else if (state.DllMode == "replaced")
-        {
-            if (string.IsNullOrWhiteSpace(state.DllBackupPath) || !File.Exists(state.DllBackupPath))
-                throw new InvalidOperationException("Original DLL backup is missing.");
-            if (!string.Equals(Sha256(state.DllBackupPath), state.OriginalDllHash, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("Original DLL backup failed verification.");
+        if (File.Exists(target) &&
+            !string.Equals(Sha256(target), state.InstalledDllHash, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                "G-REDscript-Profiler.dll changed after installation. Restore stopped without deleting or overwriting it.");
 
-            if (!File.Exists(target))
-            {
-                throw new InvalidOperationException("Replaced GRSP DLL is missing. Restore stopped without guessing whether another tool removed it.");
-            }
+        var archived = CollectLiveResultsInternal(gameRoot, requireCompletedCapture: false);
 
-            var currentDllHash = Sha256(target);
-            if (string.Equals(currentDllHash, state.InstalledDllHash, StringComparison.OrdinalIgnoreCase))
-                dllAction = "restore-original";
-            else if (string.Equals(currentDllHash, state.OriginalDllHash, StringComparison.OrdinalIgnoreCase))
-                dllAction = "leave-original"; // interrupted before replacement completed
-            else
-                throw new InvalidOperationException("Installed GRSP DLL changed outside the manager. Restore stopped without overwriting it.");
-        }
-        // preexisting-same is user-owned and is intentionally never deleted/replaced on restore.
-
-        var scenarioAction = "none";
-        if (state.ScenarioMode == "preexisting")
-        {
-            if (string.IsNullOrWhiteSpace(state.ScenarioBackupPath) || !File.Exists(state.ScenarioBackupPath))
-                throw new InvalidOperationException("Original scenario backup is missing.");
-            if (!string.Equals(Sha256(state.ScenarioBackupPath), state.OriginalScenarioHash, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("Original scenario backup failed verification.");
-            if (!File.Exists(scenario))
-                throw new InvalidOperationException("Pre-existing scenario file is now missing. Restore stopped without guessing.");
-
-            var current = Sha256(scenario);
-            if (string.Equals(current, state.OriginalScenarioHash, StringComparison.OrdinalIgnoreCase))
-                scenarioAction = "leave-original";
-            else if (!string.IsNullOrWhiteSpace(state.ManagedScenarioHash) &&
-                     string.Equals(current, state.ManagedScenarioHash, StringComparison.OrdinalIgnoreCase))
-                scenarioAction = "restore-original";
-            else
-                throw new InvalidOperationException("Scenario file changed outside the manager. Restore stopped without overwriting it.");
-        }
-        else if (state.ScenarioMode == "added" && File.Exists(scenario))
-        {
-            var current = Sha256(scenario);
-            var expected = !string.IsNullOrWhiteSpace(state.ManagedScenarioHash)
-                ? state.ManagedScenarioHash
-                : state.InstalledDefaultScenarioHash;
-            scenarioAction = !string.IsNullOrWhiteSpace(expected) &&
-                             string.Equals(current, expected, StringComparison.OrdinalIgnoreCase)
-                ? "remove-owned"
-                : "preserve-modified";
-        }
-
-        if (dllAction == "restore-original")
-        {
-            CopyFileVerified(state.DllBackupPath, target, overwrite: true);
-            if (!string.Equals(Sha256(target), state.OriginalDllHash, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("Original DLL restoration failed verification.");
-        }
-        else if (dllAction == "remove-owned")
-        {
+        if (File.Exists(target))
             File.Delete(target);
-        }
 
-        if (state.DllMode == "replaced" && File.Exists(state.DllBackupPath))
-            File.Delete(state.DllBackupPath);
+        // This directory was empty/absent before our managed install, so the manager
+        // owns its contents. Leave the final empty directory intentionally.
+        var dataDir = DataDirectory(gameRoot);
+        DeleteDirectoryContents(dataDir);
+        Directory.CreateDirectory(dataDir);
 
-        if (scenarioAction == "restore-original")
-        {
-            CopyFileVerified(state.ScenarioBackupPath, scenario, overwrite: true);
-            if (!string.Equals(Sha256(scenario), state.OriginalScenarioHash, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("Original scenario restoration failed verification.");
-        }
-        else if (scenarioAction == "remove-owned")
-        {
-            File.Delete(scenario);
-        }
-
-        if (state.ScenarioMode == "preexisting" && File.Exists(state.ScenarioBackupPath))
-            File.Delete(state.ScenarioBackupPath);
-
-        File.Delete(statePath);
-
-        return scenarioAction == "preserve-modified"
-            ? "GRSP DLL restored/removed. Modified scenario file was preserved. Native RESULTS were left untouched."
-            : "GRSP restored to its pre-manager DLL/scenario ownership state. Native RESULTS were left untouched.";
+        return string.IsNullOrWhiteSpace(archived)
+            ? "G-REDscript Profiler removed. The empty G-REDscript-Profiler data folder was intentionally left in place."
+            : "G-REDscript Profiler removed. Remaining live profiler output was archived to: " + archived +
+              ". The empty G-REDscript-Profiler data folder was intentionally left in place.";
     }
 
     public static string CollectLatest(string gameRoot)
     {
         EnsureValidRoot(gameRoot);
-        var source = LatestCompletedCapture(gameRoot)
-            ?? throw new InvalidOperationException("No completed GRSP capture was found.");
+        return CollectLiveResultsInternal(gameRoot, requireCompletedCapture: true)
+            ?? throw new InvalidOperationException("No completed G-REDscript Profiler capture was found.");
+    }
+
+    private static string? CollectLiveResultsInternal(string gameRoot, bool requireCompletedCapture)
+    {
+        var results = NativeResultsPath(gameRoot);
+        if (!Directory.Exists(results) || !Directory.EnumerateFileSystemEntries(results).Any())
+        {
+            if (requireCompletedCapture)
+                throw new InvalidOperationException("No completed G-REDscript Profiler capture was found.");
+            return null;
+        }
 
         Directory.CreateDirectory(ArchiveResultsDirectory);
-        var sourceFingerprint = DirectoryFingerprint(source);
-        var baseName = Path.GetFileName(source);
+
+        var captures = Directory.EnumerateDirectories(results, "Capture_*", SearchOption.TopDirectoryOnly)
+            .Where(IsCompletedCapture)
+            .OrderBy(Directory.GetLastWriteTimeUtc)
+            .ToList();
+
+        if (captures.Count == 0 && requireCompletedCapture)
+            throw new InvalidOperationException("No completed G-REDscript Profiler capture was found. Live files were left untouched.");
+
+        string? latestDestination = null;
+        foreach (var source in captures)
+            latestDestination = ArchiveDirectoryAndRemoveSource(source);
+
+        var leftovers = Directory.EnumerateFileSystemEntries(results).ToList();
+        if (leftovers.Count > 0)
+        {
+            if (latestDestination is null)
+            {
+                latestDestination = UniqueDirectory(
+                    ArchiveResultsDirectory,
+                    $"RecoveredLiveOutput_{DateTime.Now:yyyyMMdd-HHmmss}");
+                Directory.CreateDirectory(latestDestination);
+            }
+
+            var metadataRoot = Path.Combine(latestDestination, "LiveMetadata");
+            Directory.CreateDirectory(metadataRoot);
+
+            foreach (var entry in leftovers)
+            {
+                var target = UniquePath(metadataRoot, Path.GetFileName(entry));
+                if (File.Exists(entry))
+                {
+                    CopyFileVerified(entry, target);
+                    File.Delete(entry);
+                }
+                else if (Directory.Exists(entry))
+                {
+                    CopyDirectoryVerified(entry, target);
+                    Directory.Delete(entry, true);
+                }
+            }
+        }
+
+        if (Directory.Exists(results) && !Directory.EnumerateFileSystemEntries(results).Any())
+            Directory.Delete(results);
+
+        return latestDestination;
+    }
+
+    private static string ArchiveDirectoryAndRemoveSource(string source)
+    {
+        var fingerprint = DirectoryFingerprint(source);
+        var baseName = Path.GetFileName(
+            source.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
         var destination = Path.Combine(ArchiveResultsDirectory, baseName);
 
         if (Directory.Exists(destination))
         {
-            if (string.Equals(DirectoryFingerprint(destination), sourceFingerprint, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(DirectoryFingerprint(destination), fingerprint, StringComparison.OrdinalIgnoreCase))
+            {
+                Directory.Delete(source, true);
                 return destination;
+            }
 
-            var i = 2;
-            do destination = Path.Combine(ArchiveResultsDirectory, $"{baseName}_copy{i++}");
-            while (Directory.Exists(destination));
+            destination = UniqueDirectory(ArchiveResultsDirectory, baseName);
         }
 
-        var temp = Path.Combine(ArchiveResultsDirectory, $".copying-{Guid.NewGuid():N}");
+        var temp = Path.Combine(ArchiveResultsDirectory, $".collecting-{Guid.NewGuid():N}");
         try
         {
-            CopyTree(source, temp);
-            if (!string.Equals(DirectoryFingerprint(temp), sourceFingerprint, StringComparison.OrdinalIgnoreCase))
+            CopyDirectoryVerified(source, temp);
+            if (!string.Equals(DirectoryFingerprint(temp), fingerprint, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("Collected capture failed verification.");
+
             Directory.Move(temp, destination);
+            Directory.Delete(source, true);
             return destination;
         }
         finally
         {
-            if (Directory.Exists(temp)) Directory.Delete(temp, true);
+            if (Directory.Exists(temp))
+                Directory.Delete(temp, true);
         }
     }
 
     public static string? LatestCompletedCapture(string gameRoot)
     {
         var results = NativeResultsPath(gameRoot);
-        if (!Directory.Exists(results)) return null;
+        if (!Directory.Exists(results))
+            return null;
 
         var latest = Path.Combine(results, "LATEST.txt");
         if (File.Exists(latest))
         {
             try
             {
-                var raw = File.ReadAllText(latest).Trim().Trim('"');
+                var raw = File.ReadLines(latest).FirstOrDefault()?.Trim().Trim('"');
                 if (!string.IsNullOrWhiteSpace(raw))
                 {
                     var path = Path.IsPathRooted(raw) ? raw : Path.Combine(results, raw);
-                    if (IsCompletedCapture(path)) return Path.GetFullPath(path);
+                    if (IsCompletedCapture(path))
+                        return Path.GetFullPath(path);
                 }
             }
             catch { }
@@ -450,14 +408,21 @@ internal static class ManagerServices
             WorkingDirectory = Path.GetDirectoryName(exe)!,
             UseShellExecute = true
         });
-        return "Cyberpunk 2077 started. GRSP capture remains native: F11 starts, F11 stops.";
+
+        return "Cyberpunk 2077 started. F11 starts the G-REDscript Profiler capture; F11 again stops it.";
     }
 
-    public static string NativeResultsPath(string gameRoot) =>
-        Path.Combine(gameRoot, "red4ext", "plugins", "redscript_profiler_alpha", "RESULTS");
+    public static string DataDirectory(string gameRoot) =>
+        Path.Combine(PluginDirectory(gameRoot), DataFolderName);
 
-    public static string ScenarioPath(string gameRoot) =>
-        Path.Combine(gameRoot, "red4ext", "plugins", "redscript_profiler_alpha", "RSP_Scenario.txt");
+    public static string NativeResultsPath(string gameRoot) =>
+        Path.Combine(DataDirectory(gameRoot), "RESULTS");
+
+    public static string CaptureTitlePath(string gameRoot) =>
+        Path.Combine(DataDirectory(gameRoot), CaptureTitleFileName);
+
+    // Compatibility alias for older manager callers.
+    public static string ScenarioPath(string gameRoot) => CaptureTitlePath(gameRoot);
 
     private static bool IsCompletedCapture(string path) =>
         Directory.Exists(path) &&
@@ -468,11 +433,11 @@ internal static class ManagerServices
     {
         EnsureValidRoot(gameRoot);
         if (IsGameRunning())
-            throw new InvalidOperationException("Close Cyberpunk 2077 before installing/updating GRSP.");
+            throw new InvalidOperationException("Close Cyberpunk 2077 before installing G-REDscript Profiler.");
         if (!File.Exists(PayloadDll))
-            throw new FileNotFoundException("Packaged GRSP DLL is missing.", PayloadDll);
-        if (!File.Exists(PayloadScenario))
-            throw new FileNotFoundException("Packaged RSP_Scenario.txt is missing.", PayloadScenario);
+            throw new FileNotFoundException("Packaged G-REDscript-Profiler.dll is missing.", PayloadDll);
+        if (!File.Exists(PayloadCaptureTitle))
+            throw new FileNotFoundException("Packaged CaptureTitle.txt is missing.", PayloadCaptureTitle);
     }
 
     private static void EnsureValidRoot(string gameRoot)
@@ -485,12 +450,17 @@ internal static class ManagerServices
             throw new InvalidOperationException("RED4ext was not found in the selected game root.");
     }
 
-    private static string PluginDirectory(string gameRoot) => Path.Combine(gameRoot, "red4ext", "plugins");
-    private static string TargetDll(string gameRoot) => Path.Combine(PluginDirectory(gameRoot), "redscript_profiler_alpha.dll");
-    private static string StatePath(string gameRoot) => Path.Combine(PluginDirectory(gameRoot), StateFileName);
-    private static string DllBackupPath(string gameRoot) => Path.Combine(PluginDirectory(gameRoot), "redscript_profiler_alpha.GRSPManager.ORIGINAL.dll");
-    private static string ScenarioBackupPath(string gameRoot) => Path.Combine(Path.GetDirectoryName(ScenarioPath(gameRoot))!, "RSP_Scenario.GRSPManager.ORIGINAL.txt");
-    private static string GameExe(string gameRoot) => Path.Combine(gameRoot, "bin", "x64", "Cyberpunk2077.exe");
+    private static string PluginDirectory(string gameRoot) =>
+        Path.Combine(gameRoot, "red4ext", "plugins");
+
+    private static string TargetDll(string gameRoot) =>
+        Path.Combine(PluginDirectory(gameRoot), PluginFileName);
+
+    private static string StatePath(string gameRoot) =>
+        Path.Combine(DataDirectory(gameRoot), StateFileName);
+
+    private static string GameExe(string gameRoot) =>
+        Path.Combine(gameRoot, "bin", "x64", "Cyberpunk2077.exe");
 
     public static string Sha256(string path)
     {
@@ -499,14 +469,36 @@ internal static class ManagerServices
         return Convert.ToHexString(sha.ComputeHash(stream)).ToLowerInvariant();
     }
 
-    private static void CopyFileVerified(string source, string destination, bool overwrite = false)
+    private static void CopyFileVerified(string source, string destination)
     {
         var sourceHash = Sha256(source);
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-        File.Copy(source, destination, overwrite);
+        File.Copy(source, destination, false);
         var copiedHash = Sha256(destination);
         if (!string.Equals(sourceHash, copiedHash, StringComparison.OrdinalIgnoreCase))
-            throw new IOException($"Backup/copy verification failed: {destination}");
+        {
+            File.Delete(destination);
+            throw new IOException($"Copy verification failed: {destination}");
+        }
+    }
+
+    private static void CopyDirectoryVerified(string source, string destination)
+    {
+        Directory.CreateDirectory(destination);
+        foreach (var directory in Directory.EnumerateDirectories(source, "*", SearchOption.AllDirectories))
+            Directory.CreateDirectory(Path.Combine(destination, Path.GetRelativePath(source, directory)));
+
+        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+        {
+            var target = Path.Combine(destination, Path.GetRelativePath(source, file));
+            CopyFileVerified(file, target);
+        }
+
+        if (!string.Equals(DirectoryFingerprint(source), DirectoryFingerprint(destination), StringComparison.OrdinalIgnoreCase))
+        {
+            Directory.Delete(destination, true);
+            throw new IOException($"Directory copy verification failed: {source}");
+        }
     }
 
     private static void WriteTextVerified(string path, string text)
@@ -516,45 +508,44 @@ internal static class ManagerServices
         var temp = path + ".grsp-writing";
         File.WriteAllBytes(temp, bytes);
         if (!File.ReadAllBytes(temp).SequenceEqual(bytes))
-            throw new IOException("Scenario write verification failed.");
+        {
+            File.Delete(temp);
+            throw new IOException("Capture title write verification failed.");
+        }
         File.Move(temp, path, true);
     }
 
     private static string DirectoryFingerprint(string root)
     {
-        if (!Directory.Exists(root)) return "";
+        if (!Directory.Exists(root))
+            return "";
+
         var rows = Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
             .Select(path => (Relative: Path.GetRelativePath(root, path).Replace('\\', '/'), Path: path))
             .OrderBy(x => x.Relative, StringComparer.OrdinalIgnoreCase)
             .ThenBy(x => x.Relative, StringComparer.Ordinal)
             .Select(x => x.Relative + "\0" + Sha256(x.Path));
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join("\n", rows)))).ToLowerInvariant();
+
+        return Convert.ToHexString(
+            SHA256.HashData(Encoding.UTF8.GetBytes(string.Join("\n", rows))))
+            .ToLowerInvariant();
     }
 
-    private static void CopyTree(string source, string destination)
-    {
-        Directory.CreateDirectory(destination);
-        foreach (var dir in Directory.EnumerateDirectories(source, "*", SearchOption.AllDirectories))
-            Directory.CreateDirectory(Path.Combine(destination, Path.GetRelativePath(source, dir)));
-        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
-        {
-            var target = Path.Combine(destination, Path.GetRelativePath(source, file));
-            CopyFileVerified(file, target);
-        }
-    }
-
-    private static string SafeScenario(string value)
+    private static string SafeCaptureTitle(string value)
     {
         var chars = value.Trim().ToUpperInvariant()
+            .Take(48)
             .Select(ch => char.IsLetterOrDigit(ch) || ch is '.' or '_' or '-' ? ch : '_')
             .ToArray();
+
         var clean = new string(chars).Trim('.', '_');
         if (string.IsNullOrWhiteSpace(clean))
-            throw new ArgumentException("Scenario label is empty.");
+            throw new ArgumentException("Capture title is empty.");
+
         return clean;
     }
 
-    private static string ReadScenarioLabel(string path)
+    private static string ReadCaptureTitle(string path)
     {
         try
         {
@@ -562,15 +553,67 @@ internal static class ManagerServices
                 .Select(x => x.Trim())
                 .FirstOrDefault(x => x.Length > 0 && !x.StartsWith('#')) ?? "UNLABELED";
         }
-        catch { return "UNREADABLE"; }
+        catch
+        {
+            return "UNREADABLE";
+        }
     }
 
-    private static string ReadPayloadScenario() =>
-        File.Exists(PayloadScenario) ? ReadScenarioLabel(PayloadScenario) : "WORLD";
+    private static string ReadPayloadCaptureTitle() =>
+        File.Exists(PayloadCaptureTitle) ? ReadCaptureTitle(PayloadCaptureTitle) : "WORLD";
+
+    private static bool DirectoryHasEntries(string path) =>
+        Directory.Exists(path) && Directory.EnumerateFileSystemEntries(path).Any();
+
+    private static void DeleteDirectoryContents(string path)
+    {
+        if (!Directory.Exists(path))
+            return;
+
+        foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.TopDirectoryOnly))
+            File.Delete(file);
+
+        foreach (var directory in Directory.EnumerateDirectories(path, "*", SearchOption.TopDirectoryOnly))
+            Directory.Delete(directory, true);
+    }
+
+    private static string UniqueDirectory(string parent, string baseName)
+    {
+        var candidate = Path.Combine(parent, baseName);
+        if (!Directory.Exists(candidate) && !File.Exists(candidate))
+            return candidate;
+
+        var i = 2;
+        do
+        {
+            candidate = Path.Combine(parent, $"{baseName}_copy{i++}");
+        }
+        while (Directory.Exists(candidate) || File.Exists(candidate));
+
+        return candidate;
+    }
+
+    private static string UniquePath(string parent, string name)
+    {
+        var candidate = Path.Combine(parent, name);
+        if (!Directory.Exists(candidate) && !File.Exists(candidate))
+            return candidate;
+
+        var stem = Path.GetFileNameWithoutExtension(name);
+        var ext = Path.GetExtension(name);
+        var i = 2;
+        do
+        {
+            candidate = Path.Combine(parent, $"{stem}_copy{i++}{ext}");
+        }
+        while (Directory.Exists(candidate) || File.Exists(candidate));
+
+        return candidate;
+    }
 
     private static GrspManagerState LoadState(string path) =>
         JsonSerializer.Deserialize<GrspManagerState>(File.ReadAllText(path), JsonOptions)
-        ?? throw new InvalidOperationException("GRSP Manager state file is invalid.");
+        ?? throw new InvalidOperationException("G-REDscript Profiler manager state file is invalid.");
 
     private static void SaveState(string path, GrspManagerState state)
     {
@@ -578,7 +621,7 @@ internal static class ManagerServices
         var json = JsonSerializer.Serialize(state, JsonOptions) + Environment.NewLine;
         var temp = path + ".tmp";
         File.WriteAllText(temp, json, new UTF8Encoding(false));
-        _ = LoadState(temp); // parse verification before replace
+        _ = LoadState(temp);
         File.Move(temp, path, true);
     }
 }
@@ -588,15 +631,9 @@ internal sealed class GrspManagerState
     public int FormatVersion { get; set; }
     public string PackageVersion { get; set; } = "";
     public DateTime CreatedUtc { get; set; }
-    public string DllMode { get; set; } = "";
-    public string OriginalDllHash { get; set; } = "";
     public string InstalledDllHash { get; set; } = "";
-    public string DllBackupPath { get; set; } = "";
-    public string ScenarioMode { get; set; } = "";
-    public string OriginalScenarioHash { get; set; } = "";
-    public string ScenarioBackupPath { get; set; } = "";
-    public string InstalledDefaultScenarioHash { get; set; } = "";
-    public string ManagedScenarioHash { get; set; } = "";
+    public string InstalledCaptureTitleHash { get; set; } = "";
+    public string ManagedCaptureTitleHash { get; set; } = "";
 }
 
 internal sealed class StatusInfo
@@ -608,12 +645,11 @@ internal sealed class StatusInfo
     public string PayloadHash { get; set; } = "";
     public bool DllPresent { get; set; }
     public string InstalledHash { get; set; } = "";
+    public bool DllMatchesCurrentPackage { get; set; }
     public bool ManagedStatePresent { get; set; }
     public string ManagedInstalledHash { get; set; } = "";
-    public string OriginalDllMode { get; set; } = "";
-    public bool ScenarioPresent { get; set; }
-    public string ScenarioOwnership { get; set; } = "";
-    public string Scenario { get; set; } = "";
+    public bool CaptureTitlePresent { get; set; }
+    public string CaptureTitle { get; set; } = "";
     public string NativeResultsPath { get; set; } = "";
     public string LatestCapture { get; set; } = "";
     public int CompletedCaptureCount { get; set; }
@@ -621,4 +657,8 @@ internal sealed class StatusInfo
     public string Message { get; set; } = "";
 }
 
-internal sealed record InstallResult(string Mode, string DllPath, string ScenarioPath, string InstalledHash);
+internal sealed record InstallResult(
+    string Mode,
+    string DllPath,
+    string DataDirectory,
+    string InstalledHash);
