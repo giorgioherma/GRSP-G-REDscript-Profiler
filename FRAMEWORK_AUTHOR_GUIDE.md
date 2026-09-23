@@ -142,7 +142,7 @@ Do not stagger gameplay-critical AI decisions merely to improve a chart.
 
 ## Multi-runtime correlation
 
-GRSP 0.5.0 uses 50 ms timestamped owner buckets specifically so a framework project can correlate:
+GRSP 1.0.0 uses 50 ms timestamped owner buckets specifically so a framework project can correlate:
 
 ```text
 GRSP_Timeline.csv
