@@ -12,12 +12,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Build release DLL
-        run: cargo build --release
-
       - name: Install .NET 8
         uses: actions/setup-dotnet@v4
         with:
@@ -27,6 +21,12 @@ jobs:
         shell: pwsh
         run: |
           dotnet publish manager\GRedscriptProfiler.Manager.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o manager-publish
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release DLL
+        run: cargo build --release
 
       - name: Stage game-root package
         shell: pwsh
