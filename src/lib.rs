@@ -366,7 +366,7 @@ unsafe extern "system" {
 impl Plugin for GRedscriptProfiler {
     const AUTHOR: &'static U16CStr = wcstr!("GRSP");
     const NAME: &'static U16CStr = wcstr!("G-REDscript-Profiler");
-    const VERSION: SemVer = SemVer::new(0, 5, 0);
+    const VERSION: SemVer = SemVer::new(1, 0, 0);
 
     fn on_init(env: &SdkEnv) {
         init_qpc();
@@ -382,7 +382,7 @@ impl Plugin for GRedscriptProfiler {
         BIND_HOOK_OK.store(bind_ok, Ordering::Release);
 
         env.info(format!(
-            "[GRSP 0.5.0] bind-function hook: {}",
+            "[GRSP 1.0.0] bind-function hook: {}",
             if bind_ok { "OK" } else { "FAILED" }
         ));
 
@@ -412,7 +412,7 @@ impl Plugin for GRedscriptProfiler {
         );
 
         env.info(format!(
-            "[GRSP 0.5.0] running-frame listener: {}",
+            "[GRSP 1.0.0] running-frame listener: {}",
             if frame_ok { "OK" } else { "FAILED" }
         ));
     }
@@ -451,7 +451,7 @@ unsafe extern "C" fn on_app_init(_app: &GameApp) {
     VIRTUAL_HOOK_OK.store(virtual_ok, Ordering::Release);
 
     env.info(format!(
-        "[GRSP 0.5.0] InvokeStatic hook: {} / InvokeVirtual hook: {}",
+        "[GRSP 1.0.0] InvokeStatic hook: {} / InvokeVirtual hook: {}",
         if static_ok { "OK" } else { "FAILED" },
         if virtual_ok { "OK" } else { "FAILED" }
     ));
@@ -1909,7 +1909,7 @@ fn append_session_index(base: &Path, capture_dir: &Path) -> std::io::Result<()> 
 
     writeln!(
         w,
-        "0.5.0,{},{},{},{},{},{:.3},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+        "1.0.0,{},{},{},{},{},{:.3},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
         CAPTURE_ID.load(Ordering::Relaxed),
         csv(&capture_scenario()),
         csv(&folder),
@@ -2131,7 +2131,7 @@ fn write_status_file() -> std::io::Result<()> {
     let cross_mod_calls = cross_mod_call_total();
 
     let status = format!(
-        "GRSP 0.5.0 public profiler\n\
+        "GRSP 1.0.0 public profiler\n\
          Bind/source mapping hook: {}\n\
          InvokeStatic hook: {}\n\
          InvokeVirtual hook: {}\n\
@@ -2448,7 +2448,7 @@ fn dump_public_summary_csv(path: &Path) -> std::io::Result<()> {
     let mut w = BufWriter::new(file);
     writeln!(w, "version,capture_id,scenario,capture_key,start_unix_ms,stop_unix_ms,duration_ms,observed_calls,calls_per_sec,total_exclusive_instrumented_ms,exclusive_ms_per_sec,average_script_ms_per_frame,p95_script_ms_per_frame,p99_script_ms_per_frame,max_script_ms_per_frame,frames,frames_script_over_1ms,frames_script_over_5ms,frames_script_over_16_67ms,spike_events,top_owner,top_owner_exclusive_ms_per_sec,frame_quality,shard_merge_ok,named_static_calls,unresolved_static_calls,dropped_spikes,dropped_hot_paths,timeline_bucket_ms")?;
     writeln!(w,
-        "0.5.0,{},{},{},{},{},{:.3},{},{:.3},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{},{},{},{},{},{},{:.6},{},{},{},{},{},{},{}",
+        "1.0.0,{},{},{},{},{},{:.3},{},{:.3},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{},{},{},{},{},{},{:.6},{},{},{},{},{},{},{}",
         CAPTURE_ID.load(Ordering::Relaxed),
         csv(&capture_scenario()),
         csv(&format!("GRSP-{}-{}", CAPTURE_START_UNIX_MS.load(Ordering::Relaxed), CAPTURE_ID.load(Ordering::Relaxed))),
@@ -2659,7 +2659,7 @@ fn dump_public_report_html(path: &Path) -> std::io::Result<()> {
     let mut html = String::new();
     html.push_str("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
     html.push_str("<title>GRSP Report</title><style>body{font-family:Segoe UI,Arial,sans-serif;background:#101318;color:#e8edf2;margin:0;padding:28px}h1,h2{margin:0 0 14px}h1{font-size:28px}.muted{color:#9aa7b4}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:18px 0}.card,.panel{background:#171c23;border:1px solid #28313c;border-radius:10px;padding:14px}.big{font-size:24px;font-weight:700}.barrow{display:grid;grid-template-columns:minmax(170px,280px) 1fr 105px;gap:10px;align-items:center;margin:7px 0}.bar{height:18px;background:#252e38;border-radius:4px;overflow:hidden}.fill{height:100%;background:linear-gradient(90deg,#28b8d8,#68d391)}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:7px;border-bottom:1px solid #28313c}th{color:#9fd8e8}.warn{color:#ffd166}.good{color:#68d391}a{color:#70c9e8}code{background:#0c0f13;padding:2px 4px;border-radius:4px}.grid{display:grid;grid-template-columns:1fr;gap:16px}@media(min-width:1100px){.grid{grid-template-columns:1fr 1fr}} </style></head><body>");
-    html.push_str(&format!("<h1>GRSP 0.5.0 — {}</h1><div class=\"muted\">Capture {} · {:.2} s · start Unix ms {}</div>", html_escape(&capture_scenario()), CAPTURE_ID.load(Ordering::Relaxed), duration_s, CAPTURE_START_UNIX_MS.load(Ordering::Relaxed)));
+    html.push_str(&format!("<h1>GRSP 1.0.0 — {}</h1><div class=\"muted\">Capture {} · {:.2} s · start Unix ms {}</div>", html_escape(&capture_scenario()), CAPTURE_ID.load(Ordering::Relaxed), duration_s, CAPTURE_START_UNIX_MS.load(Ordering::Relaxed)));
     html.push_str("<div class=\"cards\">");
     html.push_str(&format!("<div class=\"card\"><div class=\"muted\">Observed calls / sec</div><div class=\"big\">{:.0}</div></div>", calls_per_sec));
     html.push_str(&format!("<div class=\"card\"><div class=\"muted\">Observed REDscript exclusive / sec</div><div class=\"big\">{:.2} ms</div></div>", total_exclusive_ms / duration_s));
@@ -2709,7 +2709,7 @@ fn dump_capture_csv(path: &Path) -> std::io::Result<()> {
     writeln!(w, "capture_id,version,scenario,capture_folder,state,start_unix_ms,stop_unix_ms,start_qpc,stop_qpc,quiescent_qpc,qpc_frequency,duration_ms,stop_drain_ms,hotkey,hotkey_poll_ms,mapped_mod_functions,observed_threads,merged_shards,frame_callbacks,frame_quality,frame_rows,callsite_rows,observed_calls,intrinsic_calls,wrapper_calls,semantic_calls,framework_shared_calls,root_calls,descendant_calls,cross_mod_calls,owner_rows,function_rows,spike_rows,hot_path_rows,dropped_spikes,dropped_hot_paths,named_static_targets,unresolved_static_targets,named_static_calls,unresolved_static_calls,shard_merge_ok")?;
     writeln!(
         w,
-        "{},0.5.0,{},{},{},{},{},{},{},{},{},{:.3},{:.3},F11,{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+        "{},1.0.0,{},{},{},{},{},{},{},{},{},{:.3},{:.3},F11,{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
         CAPTURE_ID.load(Ordering::Relaxed),
         csv(&capture_scenario()),
         csv(&capture_dir_name()),
