@@ -53,8 +53,8 @@ hooks! {
         fn(i: *mut IScriptable, f: *mut StackFrame, a3: VoidPtr, a4: VoidPtr) -> ();
 }
 
-struct RedscriptProfilerAlpha;
-export_plugin_symbols!(RedscriptProfilerAlpha);
+struct GRedscriptProfiler;
+export_plugin_symbols!(GRedscriptProfiler);
 
 #[derive(Debug, Clone)]
 struct FunctionMeta {
@@ -305,7 +305,7 @@ static SPIKES: LazyLock<RwLock<Vec<SpikeEvent>>> = LazyLock::new(|| RwLock::new(
 static HOT_PATHS: LazyLock<RwLock<Vec<HotPathEvent>>> =
     LazyLock::new(|| RwLock::new(Vec::new()));
 
-// Alpha 0.4 scenario-matrix metadata. This is read only at F11 START and
+// Capture-title metadata. This is read only at F11 START and
 // therefore adds no file I/O to the measured window.
 static CAPTURE_SCENARIO: LazyLock<RwLock<String>> =
     LazyLock::new(|| RwLock::new("UNLABELED".to_owned()));
@@ -363,9 +363,9 @@ unsafe extern "system" {
     fn Beep(frequency: u32, duration_ms: u32) -> i32;
 }
 
-impl Plugin for RedscriptProfilerAlpha {
+impl Plugin for GRedscriptProfiler {
     const AUTHOR: &'static U16CStr = wcstr!("GRSP");
-    const NAME: &'static U16CStr = wcstr!("redscript-profiler-alpha");
+    const NAME: &'static U16CStr = wcstr!("G-REDscript-Profiler");
     const VERSION: SemVer = SemVer::new(0, 5, 0);
 
     fn on_init(env: &SdkEnv) {
@@ -425,7 +425,7 @@ unsafe extern "C" fn on_app_init(_app: &GameApp) {
     let invoke_static_handler = unsafe { *handlers.add(InvokeStatic::OPCODE.into()) };
     let invoke_virtual_handler = unsafe { *handlers.add(InvokeVirtual::OPCODE.into()) };
 
-    let env = RedscriptProfilerAlpha::env();
+    let env = GRedscriptProfiler::env();
 
     let static_ok = unsafe {
         env.attach_hook(
@@ -1385,7 +1385,7 @@ fn start_control_thread() {
 
 fn begin_capture() {
     // Read the matrix label before the measured window opens. Editing
-    // RSP_Scenario.txt between captures does not require restarting the game.
+    // CaptureTitle.txt between captures does not require restarting the game.
     *CAPTURE_SCENARIO.write() = read_scenario_label();
     clear_measurement_state();
 
@@ -1783,7 +1783,7 @@ fn plugin_data_dir() -> Option<PathBuf> {
         game_root
             .join("red4ext")
             .join("plugins")
-            .join("redscript_profiler_alpha"),
+            .join("G-REDscript-Profiler"),
     )
 }
 
@@ -1792,7 +1792,7 @@ fn results_dir() -> Option<PathBuf> {
 }
 
 fn scenario_file_path() -> Option<PathBuf> {
-    Some(plugin_data_dir()?.join("RSP_Scenario.txt"))
+    Some(plugin_data_dir()?.join("CaptureTitle.txt"))
 }
 
 fn read_scenario_label() -> String {
@@ -2118,7 +2118,7 @@ fn write_status_file() -> std::io::Result<()> {
          Frame callback quality: {}\n\
          Frame callbacks: {}\n\
          State: {}\n\
-         Hotkey: F11 shared with CapFrameX\n\
+         Hotkey: F11\n\
          Audio signal: START=1 high beep / STOP=2 low beeps\n\
          Startup/load profiling: OFF by default\n\
          Hot-path design: thread-owned shards, no per-call global aggregation lock\n\
