@@ -104,6 +104,19 @@ This is the primary public ranking. Important fields:
 
 The table is decision support, **not an automatic uninstall list**. GRSP cannot know a mod's dependency graph, importance to the user, or whether measured time inside a wrapper boundary belongs entirely to the wrapper's own script logic.
 
+### Existing mod layout is authoritative
+
+GRSP does not require a profiler-specific mod format, manifest, folder rename or wrapper package.
+
+Owner attribution follows the REDscript source path already emitted by the compiler:
+
+```text
+r6/scripts/ModName/.../*.reds  -> owner = ModName
+r6/scripts/Foo.reds            -> owner = Foo
+```
+
+Both absolute and game-relative source paths are accepted, and both `/` and `\` separators are normalized. This keeps profiling compatible with mods in their existing install layout.
+
 ## CET profiler correlation
 
 GRSP 0.5.0 is designed to run in the same window as the CET native profiler.
