@@ -406,6 +406,11 @@ impl Plugin for GRedscriptProfiler {
         );
         FRAME_LISTENER_OK.store(frame_ok, Ordering::Release);
 
+        env.add_listener(
+            StateType::Shutdown,
+            StateListener::default().with_on_enter(on_shutdown),
+        );
+
         env.info(format!(
             "[GRSP 0.5.0] running-frame listener: {}",
             if frame_ok { "OK" } else { "FAILED" }
@@ -477,6 +482,16 @@ unsafe extern "C" fn on_running_update_compat(_app: &GameApp) -> bool {
     // Current RED4ext semantics: false keeps OnUpdate active. Running ignores
     // completion anyway, but returning false is the conservative choice.
     false
+}
+
+unsafe extern "C" fn on_shutdown(_app: &GameApp) {
+    // There is no pause/resume mode. Closing the game while recording acts as
+    // an implicit STOP so useful work is exported instead of discarded.
+    // Use a short drain window so shutdown cannot be delayed by the normal
+    // interactive STOP timeout.
+    if PROFILE_STATE.load(Ordering::Acquire) == STATE_RECORDING {
+        finish_capture_internal(false, 1_000);
+    }
 }
 
 unsafe extern "C" fn on_bind_function(
@@ -1415,6 +1430,10 @@ fn begin_capture() {
 }
 
 fn finish_capture() {
+    finish_capture_internal(true, STOP_DRAIN_WAIT_MS);
+}
+
+fn finish_capture_internal(play_stop_signal: bool, drain_wait_ms: u64) {
     let stop_qpc = qpc_now();
     let start_qpc = CAPTURE_START_QPC.load(Ordering::Acquire);
     let duration_us = if stop_qpc >= start_qpc {
@@ -1431,11 +1450,13 @@ fn finish_capture() {
     // finish, pop their TLS stacks and publish calls that ended inside the
     // requested measurement window.
     PROFILE_STATE.store(STATE_STOPPING, Ordering::Release);
-    signal_stop();
+    if play_stop_signal {
+        signal_stop();
+    }
 
     let drain_start = qpc_now();
     let mut waited = 0u64;
-    while waited < STOP_DRAIN_WAIT_MS && ACTIVE_ROOTS.load(Ordering::Acquire) != 0 {
+    while waited < drain_wait_ms && ACTIVE_ROOTS.load(Ordering::Acquire) != 0 {
         thread::sleep(Duration::from_millis(2));
         waited += 2;
     }
