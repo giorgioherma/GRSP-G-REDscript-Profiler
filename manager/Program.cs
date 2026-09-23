@@ -4,6 +4,11 @@ namespace GRedscriptProfiler.Manager;
 
 internal static class Program
 {
+    private static readonly JsonSerializerOptions HeadlessJsonOptions = new()
+    {
+        WriteIndented = false
+    };
+
     [STAThread]
     private static int Main(string[] args)
     {
@@ -20,6 +25,12 @@ internal static class Program
         try
         {
             var parsed = CliArgs.Parse(args);
+            if (parsed.Has("help"))
+            {
+                Console.WriteLine(HelpText);
+                return 0;
+            }
+
             var action = parsed.Get("action")?.ToLowerInvariant()
                 ?? (parsed.Has("status") ? "status" : null)
                 ?? (parsed.Has("install") ? "install" : null)
@@ -30,7 +41,7 @@ internal static class Program
             if (string.IsNullOrWhiteSpace(action))
                 throw new ArgumentException("Specify --action status|install|restore|collect|scenario|start.");
 
-            var gameRoot = parsed.Get("game-root") ?? parsed.Get("gameroot") ?? "";
+            var gameRoot = parsed.Get("game-root") ?? parsed.Get("gameroot") ?? parsed.Get("game") ?? "";
             object result = action switch
             {
                 "status" => ManagerServices.GetStatus(gameRoot),
@@ -42,16 +53,28 @@ internal static class Program
                 _ => throw new ArgumentException($"Unknown action: {action}")
             };
 
-            Console.WriteLine(JsonSerializer.Serialize(new { ok = true, result }, ManagerServices.JsonOptions));
+            Console.WriteLine(JsonSerializer.Serialize(new { ok = true, result }, HeadlessJsonOptions));
             return 0;
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine(JsonSerializer.Serialize(new { ok = false, error = ex.Message }, ManagerServices.JsonOptions));
+            Console.Error.WriteLine(JsonSerializer.Serialize(new { ok = false, error = ex.Message }, HeadlessJsonOptions));
             return 1;
         }
     }
 }
+
+    private const string HelpText =
+        "G-REDscript Profiler headless interface\n" +
+        "\n" +
+        "  --status   --game <root> --json\n" +
+        "  --install  --game <root> --json\n" +
+        "  --scenario --game <root> --scenario <label> --json\n" +
+        "  --collect  --game <root> --json\n" +
+        "  --restore  --game <root> --json\n" +
+        "  --start    --game <root> --json\n" +
+        "\n" +
+        "  --action <name> and --game-root <root> are equivalent orchestration aliases.\n";
 
 internal sealed class CliArgs
 {
