@@ -97,7 +97,7 @@ internal sealed class MainForm : Form
 
         var subtitle = new Label
         {
-            Text = "Select Cyberpunk 2077. RED4ext is required; frame-time pairing is optional.",
+            Text = "Select Cyberpunk 2077. RED4ext is required.",
             AutoSize = true,
             ForeColor = SystemColors.GrayText,
             Location = new Point(22, 55)
@@ -537,7 +537,7 @@ internal sealed class MainForm : Form
 
     private void RenderManagedFiles(StatusInfo? snapshot)
     {
-        managedFiles.Text = "After restore, the game folder will be returned to its original state.";
+        managedFiles.Text = "After restore, the game folder will be reverted to its original state.";
     }
 
     private void RefreshCompanionStatus()
@@ -739,7 +739,7 @@ internal sealed class MainForm : Form
             SetBusy(true);
             restoreOutcome.Refresh();
 
-            var message = await Task.Run(() => ManagerServices.Restore(gameRoot.Text.Trim()));
+            _ = await Task.Run(() => ManagerServices.Restore(gameRoot.Text.Trim()));
             var verified = await Task.Run(() => ManagerServices.GetStatus(gameRoot.Text.Trim()));
 
             if (verified.ManagedStatePresent || verified.DllPresent)
@@ -747,7 +747,7 @@ internal sealed class MainForm : Form
 
             lastStatus = verified;
             ShowRestoreOutcome(true, "RESTORE SUCCESSFUL — files returned to their original state.");
-            MessageBox.Show(this, message, Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, "All files have been returned to their original state.", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {
