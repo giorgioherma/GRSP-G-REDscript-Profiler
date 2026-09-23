@@ -2960,13 +2960,21 @@ fn dump_shared_targets_csv(path: &Path) -> std::io::Result<()> {
 
     let file = File::create(path)?;
     let mut w = BufWriter::new(file);
-    writeln!(w, "capture_id,call_kind,target,target_domain,target_resolution,total_calls,calls_per_sec,unique_calling_owners,unique_source_functions,observed_inclusive_ms,exclusive_instrumented_ms,max_call_ms,max_callsite_active_frame_pct")?;
+    writeln!(w, "capture_id,call_kind,target,target_domain,target_resolution,total_calls,calls_per_sec,unique_calling_owners,unique_source_functions,observed_inclusive_ms,exclusive_instrumented_ms,max_call_ms,max_callsite_active_frame_pct,calling_owners,framework_candidate_ge3owners")?;
     for ((kind, target_key), stat) in rows {
         let key = CallsiteKey { caller: 0, line: 0, kind: *kind, target: *target_key };
         let target = target_info(key, &funcs, &targets);
+        let mut calling_owners: Vec<_> = stat.owners.iter().cloned().collect();
+        calling_owners.sort_by(|a, b| {
+            a.to_ascii_lowercase()
+                .cmp(&b.to_ascii_lowercase())
+                .then_with(|| a.cmp(b))
+        });
+        let framework_candidate =
+            calling_owners.len() >= 3 && is_framework_shared_target(&target.display);
         writeln!(
             w,
-            "{},{},{},{},{},{},{:.3},{},{},{:.6},{:.6},{:.6},{:.3}",
+            "{},{},{},{},{},{},{:.3},{},{},{:.6},{:.6},{:.6},{:.3},{},{}",
             CAPTURE_ID.load(Ordering::Relaxed),
             call_kind(*kind),
             csv(&target.display),
@@ -2980,6 +2988,8 @@ fn dump_shared_targets_csv(path: &Path) -> std::io::Result<()> {
             ticks_to_ms(stat.exclusive_ticks),
             ticks_to_ms(stat.max_call_ticks),
             stat.max_callsite_active_pct,
+            csv(&calling_owners.join("|")),
+            framework_candidate,
         )?;
     }
     w.flush()
