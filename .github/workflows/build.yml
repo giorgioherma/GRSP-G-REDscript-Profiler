@@ -3,7 +3,7 @@ name: Build GRSP 0.5.0 Public Preview
 on:
   workflow_dispatch:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, 'manager/**', 'profiler/**' ]
 
 jobs:
   build:
