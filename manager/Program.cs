@@ -36,6 +36,7 @@ internal static class Program
                 ?? (parsed.Has("install") ? "install" : null)
                 ?? (parsed.Has("restore") || parsed.Has("uninstall") ? "restore" : null)
                 ?? (parsed.Has("collect") ? "collect" : null)
+                ?? (parsed.Has("scenario") ? "scenario" : null)
                 ?? (parsed.Has("start") ? "start" : null);
 
             if (string.IsNullOrWhiteSpace(action))
@@ -69,7 +70,7 @@ internal static class Program
         "\n" +
         "  --status   --game <root> --json\n" +
         "  --install  --game <root> --json\n" +
-        "  --scenario --game <root> --scenario <label> --json\n" +
+        "  --scenario <label> --game <root> --json\n" +
         "  --collect  --game <root> --json\n" +
         "  --restore  --game <root> --json\n" +
         "  --start    --game <root> --json\n" +
