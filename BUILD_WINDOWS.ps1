@@ -16,5 +16,5 @@ if (-not (Test-Path $built)) {
 Copy-Item $built $public -Force
 
 Write-Host ''
-Write-Host 'Built G-REDscript Profiler 0.5.0 Public Preview:' -ForegroundColor Green
+Write-Host 'Built G-REDscript Profiler 1.0.0:' -ForegroundColor Green
 Write-Host "  $public"
