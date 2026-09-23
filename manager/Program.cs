@@ -63,7 +63,6 @@ internal static class Program
             return 1;
         }
     }
-}
 
     private const string HelpText =
         "G-REDscript Profiler headless interface\n" +
@@ -76,6 +75,7 @@ internal static class Program
         "  --start    --game <root> --json\n" +
         "\n" +
         "  --action <name> and --game-root <root> are equivalent orchestration aliases.\n";
+}
 
 internal sealed class CliArgs
 {
