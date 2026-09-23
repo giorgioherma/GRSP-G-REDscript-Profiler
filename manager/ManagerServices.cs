@@ -139,24 +139,8 @@ internal static class ManagerServices
                 throw new InvalidOperationException("Installed GRSP DLL changed outside the manager. It will not be overwritten.");
 
             if (!string.Equals(currentHash, payloadHash, StringComparison.OrdinalIgnoreCase))
-            {
-                if (string.Equals(state.DllMode, "preexisting-same", StringComparison.OrdinalIgnoreCase))
-                {
-                    var backup = DllBackupPath(gameRoot);
-                    if (File.Exists(backup))
-                        throw new InvalidOperationException($"Cannot safely upgrade: backup path already exists: {backup}");
-                    CopyFileVerified(target, backup);
-                    state.DllMode = "replaced";
-                    state.OriginalDllHash = currentHash;
-                    state.DllBackupPath = backup;
-                }
-
-                CopyFileVerified(PayloadDll, target, overwrite: true);
-                state.InstalledDllHash = payloadHash;
-                state.PackageVersion = ProductVersion;
-                SaveState(statePath, state);
-                return new InstallResult("updated", target, ScenarioPath(gameRoot), payloadHash);
-            }
+                throw new InvalidOperationException(
+                    "This game is managed by a different GRSP package build. Restore it with its current manager state, then install this package. The manager will not overwrite a different managed build in place.");
 
             return new InstallResult("already-managed", target, ScenarioPath(gameRoot), payloadHash);
         }
@@ -261,9 +245,16 @@ internal static class ManagerServices
             throw new InvalidOperationException("Scenario file changed outside the manager. It will not be overwritten.");
 
         var clean = SafeScenario(scenario);
-        WriteTextVerified(path, clean + Environment.NewLine);
-        state.ManagedScenarioHash = Sha256(path);
+        var text = clean + Environment.NewLine;
+        var bytes = Encoding.UTF8.GetBytes(text);
+
+        // Record the exact manager-owned result before mutating the user-visible file.
+        state.ManagedScenarioHash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
         SaveState(statePath, state);
+        WriteTextVerified(path, text);
+
+        if (!string.Equals(Sha256(path), state.ManagedScenarioHash, StringComparison.OrdinalIgnoreCase))
+            throw new IOException("Scenario file did not match the prepared managed hash after write.");
         return clean;
     }
 
