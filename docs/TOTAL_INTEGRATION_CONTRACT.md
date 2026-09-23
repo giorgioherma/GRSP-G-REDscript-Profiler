@@ -1,0 +1,48 @@
+# TOTAL Profiler integration contract
+
+`G-REDscript-Profiler` is a standalone product first. G's Cyberpunk 2077 TOTAL Profiler consumes the exact standalone release unchanged.
+
+TOTAL must not:
+
+- maintain a separate GRSP DLL build;
+- rename or patch the bundled GRSP profiler DLL;
+- maintain a second GRSP install/restore implementation;
+- redirect GRSP's standalone result folder;
+- create a TOTAL-specific GRSP capture mode or output schema.
+
+TOTAL may:
+
+- bundle the exact standalone GRSP release under its own components directory;
+- invoke `G-REDscript-Profiler.exe` headlessly;
+- verify GRSP status;
+- set the capture title through the standalone headless interface;
+- ask GRSP to collect completed live output;
+- copy/read the completed standalone result as input to TOTAL;
+- orchestrate GRSP together with the exact standalone CET profiler and CapFrameX;
+- correlate the three result sources and generate TOTAL-owned combined output.
+
+## Dependency rule
+
+The files bundled by TOTAL for a GRSP release must be byte-identical to the published standalone package for that release.
+
+Combined-capture synchronization, session orchestration and correlation belong in TOTAL. GRSP remains usable without TOTAL and without a frame-time profiler.
+
+If TOTAL needs a new GRSP lifecycle capability, expose it in the standalone manager/headless contract first rather than creating a TOTAL-only profiler variant.
+
+## Frame-time companion
+
+The standalone GUI may optionally pair with an external frame-time capture tool. CapFrameX is the tested recommendation, but it is not a GRSP dependency.
+
+That companion layer is convenience-only and is not part of TOTAL's GRSP dependency contract. TOTAL may manage its own CapFrameX orchestration while still consuming the exact standalone GRSP package unchanged.
+
+## Result ownership
+
+GRSP owns its live output under:
+
+```text
+red4ext\plugins\G-REDscript-Profiler\RESULTS\
+```
+
+Standalone collection verifies the archive copy and then removes the GRSP-owned live source so the game folder stays clean.
+
+Files belonging to an external frame-time profiler are always copied only. Their source files are never moved, deleted or modified.
