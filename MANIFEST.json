@@ -1,6 +1,6 @@
 {
-  "name": "G-REDscript Profiler 0.5.0 Public Preview",
-  "version": "0.5.0",
+  "name": "G-REDscript Profiler 1.0.0",
+  "version": "1.0.0",
   "plugin_name": "G-REDscript-Profiler",
   "plugin_file": "G-REDscript-Profiler.dll",
   "data_folder": "G-REDscript-Profiler",
@@ -98,5 +98,6 @@
     "consume_exact_release_unchanged": true,
     "total_specific_profiler_variant": false,
     "orchestration_and_correlation_belong_to_total": true
-  }
+  },
+  "release_channel": "stable"
 }
