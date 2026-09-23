@@ -27,3 +27,9 @@ The large Alpha research matrix of roots, cross-mod edges, domains, threads, raw
 - real game-frame boundaries.
 - stable function/callsite IDs.
 - 1 ms bounded spike capture.
+
+## Standalone lifecycle manager
+
+The 0.5.0 Public Preview build now also produces a standalone manager artifact beside the existing game-root artifact.
+
+The manager installs/verifies/restores the native GRSP DLL, preserves scenario ownership, copies completed captures without redirecting native output, and refuses to overwrite changed/unknown managed files. Capture itself remains entirely native in the DLL and still uses F11 START / STOP.
