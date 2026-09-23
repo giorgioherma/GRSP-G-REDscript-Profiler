@@ -589,6 +589,10 @@ internal sealed class MainForm : Form
         }
 
         var installed = IsProfilerReady(snapshot);
+        var blocked = HasCriticalProfilerError(snapshot);
+        var installState = installed
+            ? "INSTALLED. ✅"
+            : blocked ? "BLOCKED. ❌" : "NOT INSTALLED. ⚠️";
 
         status.Text =
             $"Game: {(snapshot.GameRootValid ? "Found ✅" : "Not found ❌")}\r\n" +
@@ -597,7 +601,7 @@ internal sealed class MainForm : Form
             "optional:\r\n" +
             frameLine + "\r\n" +
             syncLines + "\r\n\r\n" +
-            $"G-REDscript PROFILER IS {(installed ? "INSTALLED. ✅" : "NOT INSTALLED. ⚠️")}\r\n" +
+            $"G-REDscript PROFILER IS {installState}\r\n" +
             $"Live Files: {snapshot.CompletedCaptureCount}";
         
         SetActionState(snapshot);
