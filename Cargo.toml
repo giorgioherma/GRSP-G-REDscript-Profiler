@@ -1,9 +1,10 @@
 [package]
-name = "redscript-profiler-alpha"
+name = "g-redscript-profiler"
 version = "0.5.0"
 edition = "2024"
 
 [lib]
+name = "g_redscript_profiler"
 crate-type = ["cdylib"]
 
 [dependencies]

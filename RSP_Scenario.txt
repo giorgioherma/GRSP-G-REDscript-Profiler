@@ -1,4 +1,0 @@
-# GRSP 0.5.0 scenario label.
-# Edit the first non-comment line before each F11 capture.
-# Useful labels: IDLE, WORLD, DRIVING, COMBAT, WANTED, UI
-WORLD

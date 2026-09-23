@@ -1,35 +1,54 @@
-# GRSP 0.5.0 Public Preview
+# G-REDscript Profiler 0.5.0 Public Preview
 
-This release converts the internal Alpha 0.4 scenario-matrix profiler into a public-user reporting layer without changing the proven measured hot path.
+This preview keeps the proven REDscript measurement core and turns it into a complete standalone product.
 
-## Added
+## Standalone product
 
-- `GRSP_Report.html` with top-owner bar chart and burst/spike tables.
-- `GRSP_ByMod.csv` ranked by sustained observed REDscript cost.
-- sustained / burst / mixed workload classification.
-- wrapper-attribution caution flag.
-- timestamped 50 ms `GRSP_Timeline.csv` for CET profiler correlation.
-- Unix timestamps in public frame and spike exports.
-- `GRSP_Summary.csv` with P95/P99/max observed script work per game frame.
-- compact `Developer` folder for framework authors.
+- Adds the self-contained .NET 8 `G-REDscript-Profiler.exe` manager.
+- Uses the public installed DLL name `G-REDscript-Profiler.dll`.
+- Uses the sibling data folder `red4ext\plugins\G-REDscript-Profiler\`.
+- Renames the user-facing capture label file to `CaptureTitle.txt`.
+- Uses a two-page Setup → Install/Capture/Recovery workflow modeled on G-CET Runtime Profiler.
+- Keeps GRSP standalone: only Cyberpunk 2077 + RED4ext are required.
 
-## Removed from default public output
+## Optional frame-time companion
 
-The large Alpha research matrix of roots, cross-mod edges, domains, threads, raw hot paths and other specialized tables is no longer dumped as separate public files. The core measurement model remains available internally and the most useful framework-facing views are retained.
+- Frame-time pairing is optional and never required for REDscript profiling.
+- CapFrameX is the tested/recommended companion.
+- Other profilers and compatible CapFrameX versions can be linked.
+- CapFrameX configuration is inspected read-only where useful.
+- External capture results are always copied only; their source files are never moved, deleted or modified.
 
-## Not changed
+## Installation / restore
 
-- F11 START/STOP behavior.
-- exact observed `InvokeStatic` / `InvokeVirtual` timing.
-- QPC timing.
-- thread-owned capture shards.
-- nested inclusive/exclusive-instrumented accounting.
-- real game-frame boundaries.
-- stable function/callsite IDs.
-- 1 ms bounded spike capture.
+- Installation never overwrites an existing `G-REDscript-Profiler.dll`.
+- An exact already-installed DLL is reported as already installed and usable.
+- A different GRSP DLL blocks installation.
+- Legacy `redscript_profiler_alpha.dll` is detected and blocks installation to prevent two profiler DLLs loading together.
+- Restore archives remaining GRSP live output, removes the managed DLL/data, and intentionally leaves only the final empty `G-REDscript-Profiler\` data folder.
 
-## Standalone lifecycle manager
+## Collection
 
-The 0.5.0 Public Preview build now also produces a standalone manager artifact beside the existing game-root artifact.
+- GRSP-owned live output is archived with copy verification and then removed from the game folder.
+- Capture folders and associated live metadata are therefore cleared from the game after collection.
+- External frame-time files remain untouched at their source.
 
-The manager installs/verifies/restores the native GRSP DLL, preserves scenario ownership, copies completed captures without redirecting native output, and refuses to overwrite changed/unknown managed files. Capture itself remains entirely native in the DLL and still uses F11 START / STOP.
+## Capture behavior
+
+- F11 START / F11 STOP is unchanged.
+- The profiler still starts paused.
+- If Cyberpunk closes while a capture is active, shutdown acts as an implicit STOP and exports the work captured so far.
+
+## Reporting retained from the 0.5.0 public layer
+
+- `GRSP_Report.html`
+- `GRSP_ByMod.csv`
+- workload classification and wrapper-attribution cautions
+- 50 ms `GRSP_Timeline.csv`
+- Unix timestamps for cross-profiler correlation
+- compact `Developer\` outputs for framework/optimization analysis
+- shared-target owner evidence for profiling-driven G-REDruntime work
+
+## TOTAL Profiler contract
+
+G's Cyberpunk 2077 TOTAL Profiler consumes the exact standalone GRSP release unchanged. TOTAL-specific orchestration, synchronization, CapFrameX handling and correlation belong to TOTAL rather than a modified GRSP variant.

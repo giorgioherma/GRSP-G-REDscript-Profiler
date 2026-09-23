@@ -36,20 +36,26 @@ internal static class Program
                 ?? (parsed.Has("install") ? "install" : null)
                 ?? (parsed.Has("restore") || parsed.Has("uninstall") ? "restore" : null)
                 ?? (parsed.Has("collect") ? "collect" : null)
-                ?? (parsed.Has("scenario") ? "scenario" : null)
+                ?? (parsed.Has("title") ? "title" : null)
+                ?? (parsed.Has("scenario") ? "title" : null)
                 ?? (parsed.Has("start") ? "start" : null);
 
             if (string.IsNullOrWhiteSpace(action))
-                throw new ArgumentException("Specify --action status|install|restore|collect|scenario|start.");
+                throw new ArgumentException("Specify --action status|install|restore|collect|title|start.");
 
             var gameRoot = parsed.Get("game-root") ?? parsed.Get("gameroot") ?? parsed.Get("game") ?? "";
             object result = action switch
             {
                 "status" => ManagerServices.GetStatus(gameRoot),
-                "install" => ManagerServices.InstallOrUpdate(gameRoot),
+                "install" => ManagerServices.Install(gameRoot),
                 "restore" or "uninstall" => new { message = ManagerServices.Restore(gameRoot) },
                 "collect" => new { path = ManagerServices.CollectLatest(gameRoot) },
-                "scenario" => new { scenario = ManagerServices.SaveScenario(gameRoot, parsed.Get("scenario") ?? throw new ArgumentException("--scenario is required.")) },
+                "title" => new
+                {
+                    title = ManagerServices.SaveCaptureTitle(
+                        gameRoot,
+                        parsed.Get("title") ?? parsed.Get("scenario") ?? throw new ArgumentException("--title is required."))
+                },
                 "start" => new { message = ManagerServices.StartCyberpunk(gameRoot) },
                 _ => throw new ArgumentException($"Unknown action: {action}")
             };
@@ -69,7 +75,8 @@ internal static class Program
         "\n" +
         "  --status   --game <root> --json\n" +
         "  --install  --game <root> --json\n" +
-        "  --scenario <label> --game <root> --json\n" +
+        "  --title <name> --game <root> --json\n" +
+        "  --scenario <name> is retained as a compatibility alias\n" +
         "  --collect  --game <root> --json\n" +
         "  --restore  --game <root> --json\n" +
         "  --start    --game <root> --json\n" +

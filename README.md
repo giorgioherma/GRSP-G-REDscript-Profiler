@@ -1,120 +1,171 @@
-# GRSP 0.5.0 Public Preview — G-REDscript Profiler
+# G-REDscript Profiler 0.5.0 Public Preview
 
-GRSP is a RED4ext profiler for **Cyberpunk 2077 REDscript mod workloads**. It is intended for normal mod users who want to identify sustained script load and visible stutter sources, while retaining a compact developer subset for authors building shared-runtime or optimization projects such as G-REDruntime.
+G-REDscript Profiler (GRSP) is a standalone RED4ext profiler for Cyberpunk 2077 REDscript workloads.
 
-## What 0.5.0 changes
+It measures observed `InvokeStatic` / `InvokeVirtual` call-edge activity from REDscript mod sources and turns that into public summaries, timelines, spikes, per-mod cost views and a small developer subset for framework/optimization work.
 
-The Alpha 0.4 measurement core is retained: exact observed `InvokeStatic` / `InvokeVirtual` call-edge timing, per-thread shards, nested inclusive/exclusive-instrumented timing, real game-frame boundaries, stable IDs and bounded spike capture.
+## Dependencies
 
-The output layer is redesigned for public use:
+Required:
 
-- a self-contained `GRSP_Report.html` with a **Top Mods by Observed REDscript Cost** bar chart;
-- `GRSP_ByMod.csv` ranked by exclusive instrumented milliseconds per second;
-- explicit sustained / burst / mixed workload classification;
-- 50 ms `GRSP_Timeline.csv` buckets for correlation with the CET native profiler;
-- Unix timestamps in public frame and spike outputs;
-- a much smaller public output set;
-- a `Developer` folder containing only the most useful framework-design exports.
+- Cyberpunk 2077
+- RED4ext
 
-No new file I/O, sorting, HTML generation or report work occurs while the capture is recording. Public summaries are generated **after STOP**.
+Optional:
 
-## Install
+- a frame-time capture companion
 
-GRSP now builds two artifacts.
+GRSP works fully standalone. The optional companion exists only so a REDscript capture can be archived beside a frame-time capture. CapFrameX is the tested/recommended companion, but another profiler or another compatible CapFrameX version may be linked.
 
-The legacy/manual **GameRoot** artifact remains available unchanged in shape:
+GRSP never installs, configures, modifies, moves or deletes files owned by the external frame-time profiler. External capture collection is copy-only.
 
-```text
-red4ext\plugins\redscript_profiler_alpha.dll
-red4ext\plugins\redscript_profiler_alpha\RSP_Scenario.txt
-GRSP_README.txt
-GRSP_MANIFEST.json
-GRSP_FRAMEWORK_AUTHOR_GUIDE.txt
-```
+## Standalone package
 
-The **Standalone** artifact adds the lifecycle manager:
+The public standalone package is:
 
 ```text
 G-REDscript-Profiler.exe
 payload\
-  redscript_profiler_alpha.dll
-  RSP_Scenario.txt
+  G-REDscript-Profiler.dll
+  CaptureTitle.txt
+RESULTS\
 GRSP_README.txt
 GRSP_MANIFEST.json
 ...
 ```
 
-The manager owns installation lifecycle only. It does not contain another capture engine.
+The manager and native DLL are one product. The DLL is the only measurement engine; the manager handles setup, installation, capture naming, collection and restore.
 
-It can:
-
-```text
-select/check the Cyberpunk root
-install the exact packaged GRSP DLL; a different managed package is restored first rather than overwritten in place
-back up and verify a pre-existing DLL before replacement
-preserve and back up a pre-existing RSP_Scenario.txt
-edit the scenario only while the file remains in known managed state
-find and copy the latest completed native capture
-restore/uninstall without deleting native RESULTS
-start Cyberpunk 2077
-```
-
-Changed or unknown user files are not blindly overwritten during install or restore. The manager records ownership state under `red4ext\plugins\.grsp_manager_state.json`.
-
-Headless use is available through the same EXE, for example:
+The installed game layout is intentionally simple:
 
 ```text
-G-REDscript-Profiler.exe --status --game "D:\Games\Cyberpunk 2077" --json
-G-REDscript-Profiler.exe --install --game "D:\Games\Cyberpunk 2077" --json
-G-REDscript-Profiler.exe --scenario COMBAT --game "D:\Games\Cyberpunk 2077" --json
-G-REDscript-Profiler.exe --collect --game "D:\Games\Cyberpunk 2077" --json
-G-REDscript-Profiler.exe --restore --game "D:\Games\Cyberpunk 2077" --json
+Cyberpunk 2077\
+└─ red4ext\
+   └─ plugins\
+      ├─ G-REDscript-Profiler.dll
+      └─ G-REDscript-Profiler\
+         ├─ CaptureTitle.txt
+         └─ RESULTS\
 ```
 
-The internal DLL name remains `redscript_profiler_alpha.dll` in 0.5.0 so existing Alpha installations are replaced instead of loading two profilers at once.
+The DLL sits beside the data folder at the same `red4ext\plugins` level.
 
-## Capture
+## Standalone workflow
 
-GRSP starts paused. Fully load a save before profiling.
+The manager follows the same general two-page workflow used by G-CET Runtime Profiler, but GRSP has far fewer compatibility checks.
 
-`F11` is intentionally shared with CapFrameX:
+### Setup
+
+1. Select the Cyberpunk 2077 game root.
+2. GRSP verifies the game executable.
+3. GRSP verifies RED4ext is installed.
+4. Optionally enable **Run with a frame-time capture tool**.
+5. If enabled, link the profiler executable and its capture/results folder.
+
+CapFrameX is recognized read-only where possible so GRSP can report its capture key and suggest its capture directory. Unknown/custom profilers are accepted; the user is asked to verify synchronized F11 capture manually.
+
+### Install, capture & recovery
+
+1. Install G-REDscript Profiler.
+2. Give the run a capture title.
+3. If using a frame-time companion, start that tool.
+4. Start Cyberpunk 2077.
+5. In game:
+   - **F11 #1** = START
+   - **F11 #2** = STOP + EXPORT
+6. Close Cyberpunk before collection.
+7. Use **COLLECT RESULTS / CLEAR LIVE**.
+8. Use **RESTORE ORIGINAL STATE** when profiling is finished.
+
+The profiler starts paused. No pause/resume mode is currently exposed. If the game closes while recording, shutdown is treated as an implicit STOP and GRSP exports the useful capture accumulated so far.
+
+## Existing installation rule
+
+Installation never overwrites an existing profiler DLL.
+
+Before deployment GRSP checks:
 
 ```text
-F11 #1 -> START  (one high beep)
-F11 #2 -> STOP   (two low beeps)
+red4ext\plugins\G-REDscript-Profiler.dll
 ```
 
-Edit the first non-comment line in:
+If the exact packaged DLL is already present, the manager reports that this GRSP build is already installed and the user can run it.
+
+If a different `G-REDscript-Profiler.dll` is present, installation is refused.
+
+The legacy development DLL `redscript_profiler_alpha.dll` is also detected and blocks installation so two GRSP profiler DLLs cannot be loaded together.
+
+Normal public use should rarely hit these cases because the guided workflow ends with restore.
+
+## Capture title
+
+The manager writes the title to:
 
 ```text
-red4ext\plugins\redscript_profiler_alpha\RSP_Scenario.txt
+red4ext\plugins\G-REDscript-Profiler\CaptureTitle.txt
 ```
 
-before a capture. Useful labels include:
+The first non-comment line is read at F11 START. The normalized title becomes part of the native capture directory name.
+
+Example:
 
 ```text
-WORLD
-DRIVING
-COMBAT
-WANTED
-UI
-IDLE
+CITY_DRIVING
 ```
 
-The scenario file is read only at START, before recording begins.
+produces a capture similar to:
+
+```text
+Capture_0001_CITY_DRIVING_<start_unix_ms>
+```
+
+## Collection ownership
+
+GRSP-owned live output is temporary game-side data.
+
+On collection, completed captures and related GRSP metadata are copied and verified into the standalone package's `RESULTS` directory, then removed from the live game folder.
+
+This is deliberately equivalent to a safe move operation:
+
+```text
+game-side GRSP output
+        ↓ copy
+verify exact archive
+        ↓
+delete GRSP-owned live source
+```
+
+This keeps the live game folder clean for the next run.
+
+External frame-time data follows a different rule:
+
+```text
+external profiler capture
+        ↓ COPY ONLY
+GRSP archive\FrameTime\...
+```
+
+The external source is never removed or modified.
+
+## Restore behavior
+
+Restore requires Cyberpunk 2077 to be closed.
+
+If uncollected GRSP live output exists, it is archived first. The manager then removes its managed DLL and managed data.
+
+One deliberate exception remains:
+
+```text
+red4ext\plugins\G-REDscript-Profiler\
+```
+
+The final empty data folder is intentionally left behind. The DLL, capture-title file, state and live output are removed.
+
+Unknown or changed profiler DLLs are never blindly deleted.
 
 ## Public output
 
-Each capture is preserved under:
-
-```text
-red4ext\plugins\redscript_profiler_alpha\RESULTS\
-  Capture_0001_WORLD_<start_unix_ms>\
-```
-
-Open **`GRSP_Report.html`** first.
-
-Public files:
+Each native completed capture contains:
 
 ```text
 GRSP_Report.html
@@ -127,27 +178,22 @@ GRSP_Spikes.csv
 GRSP_Markers.csv
 GRSP_FrameworkCandidates.csv
 GRSP_Status.txt
+Developer\
+  RSP_FunctionMap.csv
+  RSP_CallSites.csv
+  RSP_SharedTargets.csv
+  RSP_Cadence.csv
+  RSP_WrapperChains.csv
+  RSP_WorkMap.csv
 ```
 
-`RESULTS\RSP_SessionIndex.csv` remains an append-only index across captures, and `LATEST.txt` points to the newest capture.
+Open `GRSP_Report.html` first.
 
-### GRSP_ByMod.csv
+The public timeline uses 50 ms buckets and exposes capture-relative plus Unix timing for correlation with other performance data.
 
-This is the primary public ranking. Important fields:
+## Existing REDscript mod layouts
 
-- `exclusive_ms_per_sec` — sustained observed REDscript-side cost;
-- `observed_exclusive_share_pct` — share of the profiler's observed exclusive work;
-- `active_frame_pct` — how continuously the owner is active;
-- `max_frame_exclusive_ms` — largest owner contribution in one observed game frame;
-- `max_spike_ms` — largest captured call boundary;
-- `workload_pattern` — `SUSTAINED`, `BURSTY`, `MIXED`, or `BACKGROUND`;
-- `attribution_note` — flags cases where wrapper attribution needs extra caution.
-
-The table is decision support, **not an automatic uninstall list**. GRSP cannot know a mod's dependency graph, importance to the user, or whether measured time inside a wrapper boundary belongs entirely to the wrapper's own script logic.
-
-### Existing mod layout is authoritative
-
-GRSP does not require a profiler-specific mod format, manifest, folder rename or wrapper package.
+GRSP does not require mods to adopt a profiler-specific structure.
 
 Owner attribution follows the REDscript source path already emitted by the compiler:
 
@@ -156,73 +202,38 @@ r6/scripts/ModName/.../*.reds  -> owner = ModName
 r6/scripts/Foo.reds            -> owner = Foo
 ```
 
-Both absolute and game-relative source paths are accepted, and both `/` and `\` separators are normalized. This keeps profiling compatible with mods in their existing install layout.
+The user's mod stack may of course contain modified/optimized REDscript overrides. GRSP simply profiles what is installed.
 
-## CET profiler correlation
+## Headless interface
 
-GRSP 0.5.0 is designed to run in the same window as the CET native profiler.
-
-The public timing files expose the same two useful axes:
+The same standalone EXE exposes the lifecycle interface used by higher-level orchestration:
 
 ```text
-capture-relative time
-Unix epoch milliseconds
+G-REDscript-Profiler.exe --status --game "D:\Games\Cyberpunk 2077" --json
+G-REDscript-Profiler.exe --install --game "D:\Games\Cyberpunk 2077" --json
+G-REDscript-Profiler.exe --title CITY_DRIVING --game "D:\Games\Cyberpunk 2077" --json
+G-REDscript-Profiler.exe --collect --game "D:\Games\Cyberpunk 2077" --json
+G-REDscript-Profiler.exe --restore --game "D:\Games\Cyberpunk 2077" --json
+G-REDscript-Profiler.exe --start --game "D:\Games\Cyberpunk 2077" --json
 ```
 
-`GRSP_Timeline.csv` uses **50 ms buckets** so it can be joined against the CET profiler timeline. `GRSP_Markers.csv` carries START / STOP timing, while `GRSP_Frames.csv` and `GRSP_Spikes.csv` include Unix timestamps for direct event correlation.
+`--scenario` remains a compatibility alias for `--title`.
 
-Recommended workflow:
+## TOTAL Profiler boundary
 
-1. bind both profilers to the same F11 capture window;
-2. use the same scenario label/name in both runs when possible;
-3. align START markers by Unix time;
-4. compare the 50 ms timelines;
-5. inspect GRSP spike/frame rows around CET spikes;
-6. use CapFrameX for the actual rendered-frame result.
+G-REDscript Profiler is standalone first.
 
-The three tools answer different questions:
+G's Cyberpunk 2077 TOTAL Profiler should bundle and consume the exact published standalone GRSP release unchanged. TOTAL may provide its own orchestration/adapters, synchronized workflow, CapFrameX handling and correlator, but it should not ship a TOTAL-specific GRSP DLL or manager variant.
 
-```text
-GRSP       -> REDscript ownership/call structure
-CET profiler -> Lua/CET callback ownership
-CapFrameX  -> what the player actually experienced
-```
-
-## Developer subset
-
-The `Developer` folder contains a small set useful for framework authors without restoring the old research-output flood:
-
-```text
-RSP_FunctionMap.csv
-RSP_CallSites.csv
-RSP_SharedTargets.csv
-RSP_Cadence.csv
-RSP_WrapperChains.csv
-RSP_WorkMap.csv
-```
-
-`GRSP_FrameworkCandidates.csv` remains in the public root because it is useful to authors deciding whether repeated work suggests dirty/event gates, shared state, caching/indexing or wrapper consolidation.
-
-See `FRAMEWORK_AUTHOR_GUIDE.md` in the source package.
+See `docs/TOTAL_INTEGRATION_CONTRACT.md`.
 
 ## Measurement interpretation
 
-GRSP observes `InvokeStatic` / `InvokeVirtual` activity whose caller maps to `r6\scripts` mod source.
+GRSP is not a whole-CPU profiler, GPU profiler or complete VM trace.
 
-It is **not** a whole-CPU profiler, GPU profiler, complete VM instruction trace, or proof that a high-ranked mod is defective.
+`exclusive_instrumented_ms` means observed inclusive time minus nested calls that GRSP also observed. Native/base work can remain inside an observed wrapper boundary, and virtual targets do not always identify a concrete runtime implementation owner.
 
-`exclusive_instrumented_ms` means:
-
-```text
-inclusive observed call time
-- time spent in nested calls also observed by GRSP
-```
-
-Uninstrumented/native/base work may still remain inside an observed boundary. This is especially important for wrapper-heavy mods. Virtual target resolution also does not always identify the concrete runtime implementation owner.
-
-## Trust gates
-
-Treat a capture as reliable when:
+Useful trust gates include:
 
 ```text
 shard_merge_ok = true
@@ -235,24 +246,24 @@ dropped_hot_paths = 0 or understood
 
 ## Build
 
-The profiler DLL still builds with Rust/MSVC:
+Native DLL:
 
 ```powershell
 .\BUILD_WINDOWS.ps1
 ```
 
-The standalone manager is a self-contained .NET 8 WinForms win-x64 build:
+Final local DLL:
+
+```text
+target\release\G-REDscript-Profiler.dll
+```
+
+Standalone manager:
 
 ```powershell
 dotnet publish manager\GRedscriptProfiler.Manager.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
 ```
 
-Measurement remains entirely in:
-
-```text
-target\release\redscript_profiler_alpha.dll
-```
-
 ## Technical basis / credit
 
-Function/source bind mapping and the `BindFunction` + `InvokeStatic` + `InvokeVirtual` hook strategy are based on the open-source `redscript-dap` work by jekky / jac3km4 (MIT). `red4ext-rs` supplies the RED4ext Rust bindings and remains pinned to revision `c44146c` for this preview.
+The function/source bind mapping and `BindFunction` + `InvokeStatic` + `InvokeVirtual` hook strategy are based on the open-source `redscript-dap` work by jekky / jac3km4 (MIT). `red4ext-rs` supplies the RED4ext Rust bindings and remains pinned to revision `c44146c` for this preview.
