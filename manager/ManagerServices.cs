@@ -130,12 +130,12 @@ internal static class ManagerServices
 
         if (File.Exists(statePath))
         {
-            var state = LoadState(statePath);
+            var existingState = LoadState(statePath);
             if (!File.Exists(target))
                 throw new InvalidOperationException("Managed state exists but the installed DLL is missing. Restore/reconcile before reinstalling.");
 
             var currentHash = Sha256(target);
-            if (!string.Equals(currentHash, state.InstalledDllHash, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(currentHash, existingState.InstalledDllHash, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("Installed GRSP DLL changed outside the manager. It will not be overwritten.");
 
             if (!string.Equals(currentHash, payloadHash, StringComparison.OrdinalIgnoreCase))
