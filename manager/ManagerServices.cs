@@ -86,7 +86,7 @@ internal static class ManagerServices
                 status.Message = "GRSP is managed, but this package contains a different DLL build.";
             }
         }
-        else if (status.DllPresent)
+        else if (!status.ManagedStatePresent && status.DllPresent)
         {
             if (status.PayloadPresent && string.Equals(status.InstalledHash, status.PayloadHash, StringComparison.OrdinalIgnoreCase))
             {
@@ -99,7 +99,7 @@ internal static class ManagerServices
                 status.Message = "A different redscript_profiler_alpha.dll is installed. Install will back it up and verify the backup before replacement.";
             }
         }
-        else if (string.IsNullOrEmpty(status.State))
+        else if (!status.ManagedStatePresent && string.IsNullOrEmpty(status.State))
         {
             status.State = "NOT_INSTALLED";
             status.Message = "GRSP is not installed.";
@@ -282,21 +282,45 @@ internal static class ManagerServices
         var scenario = ScenarioPath(gameRoot);
 
         // Preflight everything first so a conflict cannot leave a half-restored installation.
-        if (state.DllMode is "added" or "replaced")
+        // Also recognize a transaction interrupted after state/backups were written but before
+        // the packaged DLL fully replaced the target.
+        var dllAction = "none";
+        if (state.DllMode == "added")
         {
             if (!File.Exists(target))
-                throw new InvalidOperationException("Installed GRSP DLL is missing. Restore stopped without changing anything.");
-            if (!string.Equals(Sha256(target), state.InstalledDllHash, StringComparison.OrdinalIgnoreCase))
+            {
+                dllAction = "none"; // install never reached the DLL copy
+            }
+            else if (string.Equals(Sha256(target), state.InstalledDllHash, StringComparison.OrdinalIgnoreCase))
+            {
+                dllAction = "remove-owned";
+            }
+            else
+            {
                 throw new InvalidOperationException("Installed GRSP DLL changed outside the manager. Restore stopped without overwriting it.");
+            }
         }
-
-        if (state.DllMode == "replaced")
+        else if (state.DllMode == "replaced")
         {
             if (string.IsNullOrWhiteSpace(state.DllBackupPath) || !File.Exists(state.DllBackupPath))
                 throw new InvalidOperationException("Original DLL backup is missing.");
             if (!string.Equals(Sha256(state.DllBackupPath), state.OriginalDllHash, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("Original DLL backup failed verification.");
+
+            if (!File.Exists(target))
+            {
+                throw new InvalidOperationException("Replaced GRSP DLL is missing. Restore stopped without guessing whether another tool removed it.");
+            }
+
+            var currentDllHash = Sha256(target);
+            if (string.Equals(currentDllHash, state.InstalledDllHash, StringComparison.OrdinalIgnoreCase))
+                dllAction = "restore-original";
+            else if (string.Equals(currentDllHash, state.OriginalDllHash, StringComparison.OrdinalIgnoreCase))
+                dllAction = "leave-original"; // interrupted before replacement completed
+            else
+                throw new InvalidOperationException("Installed GRSP DLL changed outside the manager. Restore stopped without overwriting it.");
         }
+        // preexisting-same is user-owned and is intentionally never deleted/replaced on restore.
 
         var scenarioAction = "none";
         if (state.ScenarioMode == "preexisting")
@@ -329,18 +353,19 @@ internal static class ManagerServices
                 : "preserve-modified";
         }
 
-        if (state.DllMode == "replaced")
+        if (dllAction == "restore-original")
         {
             CopyFileVerified(state.DllBackupPath, target, overwrite: true);
             if (!string.Equals(Sha256(target), state.OriginalDllHash, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("Original DLL restoration failed verification.");
-            File.Delete(state.DllBackupPath);
         }
-        else if (state.DllMode == "added")
+        else if (dllAction == "remove-owned")
         {
             File.Delete(target);
         }
-        // preexisting-same remains in place because it was not manager-owned.
+
+        if (state.DllMode == "replaced" && File.Exists(state.DllBackupPath))
+            File.Delete(state.DllBackupPath);
 
         if (scenarioAction == "restore-original")
         {
