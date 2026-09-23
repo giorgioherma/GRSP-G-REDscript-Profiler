@@ -175,7 +175,7 @@ jobs:
           $body = (Get-Content PUBLIC_RELEASE_NOTES.md -Raw).TrimEnd() +
             [Environment]::NewLine + [Environment]::NewLine +
             "## SHA-256" + [Environment]::NewLine + [Environment]::NewLine +
-            "`$env:PUBLIC_SHA256`  `$asset`" + [Environment]::NewLine
+            "$env:PUBLIC_SHA256  $asset" + [Environment]::NewLine
           $body | Set-Content -LiteralPath release-body.md -Encoding utf8
 
           gh release create $tag $asset $shaAsset --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title $title --notes-file release-body.md --latest
