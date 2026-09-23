@@ -3,7 +3,7 @@ name: Build GRSP 0.5.0 Public Preview
 on:
   workflow_dispatch:
   push:
-    branches: [ main, master, 'manager/**', 'profiler/**' ]
+    branches: [ main, master, 'manager/**', 'profiler/**', standalone-product ]
 
 jobs:
   build:
@@ -32,9 +32,9 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path package\red4ext\plugins | Out-Null
-          New-Item -ItemType Directory -Force -Path package\red4ext\plugins\redscript_profiler_alpha | Out-Null
-          Copy-Item target\release\redscript_profiler_alpha.dll package\red4ext\plugins\redscript_profiler_alpha.dll
-          Copy-Item RSP_Scenario.txt package\red4ext\plugins\redscript_profiler_alpha\RSP_Scenario.txt
+          New-Item -ItemType Directory -Force -Path package\red4ext\plugins\G-REDscript-Profiler | Out-Null
+          Copy-Item target\release\g_redscript_profiler.dll package\red4ext\plugins\G-REDscript-Profiler.dll
+          Copy-Item CaptureTitle.txt package\red4ext\plugins\G-REDscript-Profiler\CaptureTitle.txt
           Copy-Item README.md package\GRSP_README.txt
           Copy-Item MANIFEST.json package\GRSP_MANIFEST.json
           Copy-Item FRAMEWORK_AUTHOR_GUIDE.md package\GRSP_FRAMEWORK_AUTHOR_GUIDE.txt
@@ -52,9 +52,10 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path standalone\payload | Out-Null
+          New-Item -ItemType Directory -Force -Path standalone\RESULTS | Out-Null
           Copy-Item manager-publish\G-REDscript-Profiler.exe standalone\G-REDscript-Profiler.exe
-          Copy-Item target\release\redscript_profiler_alpha.dll standalone\payload\redscript_profiler_alpha.dll
-          Copy-Item RSP_Scenario.txt standalone\payload\RSP_Scenario.txt
+          Copy-Item target\release\g_redscript_profiler.dll standalone\payload\G-REDscript-Profiler.dll
+          Copy-Item CaptureTitle.txt standalone\payload\CaptureTitle.txt
           Copy-Item README.md standalone\GRSP_README.txt
           Copy-Item MANIFEST.json standalone\GRSP_MANIFEST.json
           Copy-Item FRAMEWORK_AUTHOR_GUIDE.md standalone\GRSP_FRAMEWORK_AUTHOR_GUIDE.txt
