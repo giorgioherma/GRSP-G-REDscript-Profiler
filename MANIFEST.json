@@ -12,7 +12,10 @@
   "sampling": false,
   "timing_clock": "QueryPerformanceCounter",
   "public_timeline_bucket_ms": 50,
-  "cross_profiler_timebase": ["capture_relative_ms", "unix_epoch_ms"],
+  "cross_profiler_timebase": [
+    "capture_relative_ms",
+    "unix_epoch_ms"
+  ],
   "public_outputs": [
     "GRSP_Report.html",
     "GRSP_Summary.csv",
@@ -48,5 +51,26 @@
     "wrapper boundaries can include uninstrumented/native/base work",
     "virtual targets are not always concrete implementation ownership",
     "profiler does not know mod dependency graphs and does not issue uninstall recommendations"
-  ]
+  ],
+  "packages": {
+    "game_root": "manual game-root payload retained for compatibility",
+    "standalone": {
+      "manager": "G-REDscript-Profiler.exe",
+      "manager_runtime": ".NET 8 self-contained win-x64",
+      "payload_dir": "payload",
+      "capture_engine": "payload/redscript_profiler_alpha.dll",
+      "lifecycle_only": true,
+      "native_results_redirected": false,
+      "headless_json": "compact one-line JSON",
+      "headless_game_arg": "--game"
+    }
+  },
+  "manager_policy": {
+    "backup_before_user_owned_mutation": true,
+    "verify_backups": true,
+    "overwrite_unknown_changed_state": false,
+    "preserve_preexisting_scenario": true,
+    "native_results_on_uninstall": "leave untouched",
+    "collection": "copy and verify completed native capture"
+  }
 }

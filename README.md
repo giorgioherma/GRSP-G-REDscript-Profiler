@@ -20,7 +20,9 @@ No new file I/O, sorting, HTML generation or report work occurs while the captur
 
 ## Install
 
-The GitHub Actions artifact is staged from the game root:
+GRSP now builds two artifacts.
+
+The legacy/manual **GameRoot** artifact remains available unchanged in shape:
 
 ```text
 red4ext\plugins\redscript_profiler_alpha.dll
@@ -28,6 +30,45 @@ red4ext\plugins\redscript_profiler_alpha\RSP_Scenario.txt
 GRSP_README.txt
 GRSP_MANIFEST.json
 GRSP_FRAMEWORK_AUTHOR_GUIDE.txt
+```
+
+The **Standalone** artifact adds the lifecycle manager:
+
+```text
+G-REDscript-Profiler.exe
+payload\
+  redscript_profiler_alpha.dll
+  RSP_Scenario.txt
+GRSP_README.txt
+GRSP_MANIFEST.json
+...
+```
+
+The manager owns installation lifecycle only. It does not contain another capture engine.
+
+It can:
+
+```text
+select/check the Cyberpunk root
+install the exact packaged GRSP DLL; a different managed package is restored first rather than overwritten in place
+back up and verify a pre-existing DLL before replacement
+preserve and back up a pre-existing RSP_Scenario.txt
+edit the scenario only while the file remains in known managed state
+find and copy the latest completed native capture
+restore/uninstall without deleting native RESULTS
+start Cyberpunk 2077
+```
+
+Changed or unknown user files are not blindly overwritten during install or restore. The manager records ownership state under `red4ext\plugins\.grsp_manager_state.json`.
+
+Headless use is available through the same EXE, for example:
+
+```text
+G-REDscript-Profiler.exe --status --game "D:\Games\Cyberpunk 2077" --json
+G-REDscript-Profiler.exe --install --game "D:\Games\Cyberpunk 2077" --json
+G-REDscript-Profiler.exe --scenario COMBAT --game "D:\Games\Cyberpunk 2077" --json
+G-REDscript-Profiler.exe --collect --game "D:\Games\Cyberpunk 2077" --json
+G-REDscript-Profiler.exe --restore --game "D:\Games\Cyberpunk 2077" --json
 ```
 
 The internal DLL name remains `redscript_profiler_alpha.dll` in 0.5.0 so existing Alpha installations are replaced instead of loading two profilers at once.
@@ -194,13 +235,19 @@ dropped_hot_paths = 0 or understood
 
 ## Build
 
-GitHub Actions or local Windows Rust/MSVC:
+The profiler DLL still builds with Rust/MSVC:
 
 ```powershell
 .\BUILD_WINDOWS.ps1
 ```
 
-Final DLL:
+The standalone manager is a self-contained .NET 8 WinForms win-x64 build:
+
+```powershell
+dotnet publish manager\GRedscriptProfiler.Manager.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+```
+
+Measurement remains entirely in:
 
 ```text
 target\release\redscript_profiler_alpha.dll
