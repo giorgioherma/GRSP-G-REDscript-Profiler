@@ -12,5 +12,11 @@
     <PublishSingleFile>true</PublishSingleFile>
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Authors>Gregor Maher</Authors>
+    <Product>G-REDscript Profiler</Product>
+    <RepositoryUrl>https://github.com/giorgioherma/GRSP-G-Redscript-Profiler</RepositoryUrl>
   </PropertyGroup>
 </Project>
