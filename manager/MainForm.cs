@@ -561,7 +561,7 @@ internal sealed class MainForm : Form
 
         var frameLine = companionConfigured
             ? $"Frame-Time Profiler: {companion.DisplayName} found ✅"
-            : "Frame-Time Profiler: Not provided ❌";
+            : "Frame-Time Profiler: Not provided ⚠️";
 
         string syncLines;
         if (!companionConfigured)
@@ -583,7 +583,7 @@ internal sealed class MainForm : Form
                 ? companion.StartKey + " ⚠️"
                 : "Unknown ⚠️";
             syncLines =
-                "Synced keybind: NO ❌\r\n" +
+                "Synced keybind: NO ⚠️\r\n" +
                 "    - G-REDscript Profiler: F11 ✅\r\n" +
                 $"    - Frame-Time Profiler: {externalKey}";
         }
@@ -597,7 +597,7 @@ internal sealed class MainForm : Form
             "optional:\r\n" +
             frameLine + "\r\n" +
             syncLines + "\r\n\r\n" +
-            $"G-REDscript PROFILER IS {(installed ? "INSTALLED. ✅" : "NOT INSTALLED. ❌")}\r\n" +
+            $"G-REDscript PROFILER IS {(installed ? "INSTALLED. ✅" : "NOT INSTALLED. ⚠️")}\r\n" +
             $"Live Files: {snapshot.CompletedCaptureCount}";
         
         SetActionState(snapshot);
@@ -610,6 +610,19 @@ internal sealed class MainForm : Form
         snapshot.State is "INSTALLED_CURRENT" or "PREEXISTING_CURRENT" &&
         snapshot.CaptureTitlePresent;
 
+    private static bool HasCriticalProfilerError(StatusInfo? snapshot) =>
+        snapshot is null ||
+        !snapshot.GameRootValid ||
+        !snapshot.Red4extPresent ||
+        snapshot.State is
+            "INSTALLED_OTHER_VERSION" or
+            "INSTALLED_OTHER_PACKAGE" or
+            "LEGACY_GRSP_PRESENT" or
+            "STALE_DATA" or
+            "MANAGED_DLL_CHANGED" or
+            "MANAGED_DLL_MISSING" or
+            "INVALID_MANAGED_STATE";
+
     private bool HasConfiguredCompanion() =>
         pairFrameTime.Checked &&
         File.Exists(companionExe.Text.Trim()) &&
@@ -618,8 +631,12 @@ internal sealed class MainForm : Form
     private void RenderReadyState(StatusInfo? snapshot)
     {
         var ready = IsProfilerReady(snapshot);
+        var blocked = HasCriticalProfilerError(snapshot);
+
         readyHeading.Text = ready ? "PROFILER IS READY!" : "PROFILER IS NOT READY!";
-        readyHeading.ForeColor = ready ? Color.ForestGreen : Color.Firebrick;
+        readyHeading.ForeColor = ready
+            ? Color.ForestGreen
+            : blocked ? Color.Firebrick : Color.DarkGoldenrod;
         readyInstructions.Enabled = ready;
     }
 
