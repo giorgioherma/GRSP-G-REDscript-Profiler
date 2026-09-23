@@ -23,6 +23,9 @@ internal sealed class MainForm : Form
 
     private readonly Label status = new();
     private readonly Label managedFiles = new();
+    private readonly GroupBox readyGroup = new();
+    private readonly Label readyHeading = new();
+    private readonly Label readyInstructions = new();
     private readonly TextBox captureTitle = new();
     private readonly Button saveCaptureTitle = new();
 
@@ -44,8 +47,8 @@ internal sealed class MainForm : Form
     {
         Text = $"G-REDscript Profiler - {ManagerServices.ProductVersion}";
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(860, 690);
-        MinimumSize = new Size(880, 730);
+        ClientSize = new Size(860, 735);
+        MinimumSize = new Size(880, 775);
         Font = new Font("Segoe UI", 9F);
 
         BuildSetupPage();
@@ -149,6 +152,8 @@ internal sealed class MainForm : Form
             RefreshCompanionStatus();
             SaveSettingsFromUi();
             SetActionState(lastStatus);
+            RenderStatus(lastStatus);
+            RenderReadyState(lastStatus);
         };
 
         var explanation = new Label
@@ -198,6 +203,8 @@ internal sealed class MainForm : Form
             RefreshCompanionStatus();
             SetActionState(lastStatus);
             SaveSettingsFromUi();
+            RenderStatus(lastStatus);
+            RenderReadyState(lastStatus);
         };
 
         browseCompanionExe.Text = "Browse...";
@@ -237,6 +244,9 @@ internal sealed class MainForm : Form
                 return;
             RefreshCompanionStatus();
             SaveSettingsFromUi();
+            SetActionState(lastStatus);
+            RenderStatus(lastStatus);
+            RenderReadyState(lastStatus);
         };
 
         browseCompanionResults.Text = "Browse...";
@@ -312,17 +322,17 @@ internal sealed class MainForm : Form
         };
 
         var statusGroup = new GroupBox { Text = "Profiler status" };
-        statusGroup.SetBounds(20, 66, 820, 156);
-        status.SetBounds(18, 27, 775, 92);
-        status.Font = new Font("Consolas", 9.5F);
+        statusGroup.SetBounds(20, 66, 820, 250);
+        status.SetBounds(18, 27, 775, 178);
+        status.Font = new Font("Segoe UI", 9.5F);
 
         refresh.Text = "REFRESH";
-        refresh.SetBounds(694, 118, 100, 28);
+        refresh.SetBounds(694, 210, 100, 28);
         refresh.Click += async (_, _) => await RefreshStatusAsync();
         statusGroup.Controls.AddRange([status, refresh]);
 
         var captureGroup = new GroupBox { Text = "Capture" };
-        captureGroup.SetBounds(20, 232, 820, 144);
+        captureGroup.SetBounds(20, 326, 820, 112);
 
         var captureLabel = new Label
         {
@@ -346,27 +356,37 @@ internal sealed class MainForm : Form
             Text = "The title is read when capture starts and becomes part of the capture folder name.\r\nF11 #1 = START   ·   F11 #2 = STOP + EXPORT   ·   closing the game while recording also exports what was captured.",
             MaximumSize = new Size(775, 0),
             AutoSize = true,
-            Location = new Point(18, 66)
+            Location = new Point(18, 62)
         };
         captureGroup.Controls.AddRange([captureLabel, captureTitle, saveCaptureTitle, captureHint]);
 
-        var filesGroup = new GroupBox { Text = "Restore" };
-        filesGroup.SetBounds(20, 386, 820, 94);
-        managedFiles.SetBounds(18, 24, 775, 58);
-        managedFiles.MaximumSize = new Size(775, 0);
-        managedFiles.AutoSize = true;
-        filesGroup.Controls.Add(managedFiles);
+        readyGroup.Text = "";
+        readyGroup.SetBounds(20, 448, 820, 138);
+
+        readyHeading.SetBounds(18, 16, 775, 28);
+        readyHeading.Font = new Font("Segoe UI Semibold", 11F);
+        readyHeading.AutoSize = false;
+
+        readyInstructions.SetBounds(18, 46, 775, 84);
+        readyInstructions.Font = new Font("Segoe UI", 9.5F);
+        readyInstructions.AutoSize = false;
+        readyInstructions.Text =
+            "1. Run your Frame-time Capture Tool if you're using one and enter the game.\r\n" +
+            "2. To start measurement press your shared keybind (F11). To stop capture and prep the results press the same key again (F11).\r\n" +
+            "3. Return to installer and COLLECT RESULTS.\r\n" +
+            "4. After usage RESTORE ORIGINAL STATE to finish.";
+        readyGroup.Controls.AddRange([readyHeading, readyInstructions]);
 
         install.Text = "INSTALL PROFILER";
-        install.SetBounds(20, 496, 230, 42);
+        install.SetBounds(20, 598, 230, 42);
         install.Click += async (_, _) => await InstallAsync();
 
         collect.Text = "COLLECT RESULTS / CLEAR LIVE";
-        collect.SetBounds(265, 496, 300, 42);
+        collect.SetBounds(265, 598, 300, 42);
         collect.Click += async (_, _) => await CollectAsync();
 
         restore.Text = "RESTORE ORIGINAL STATE";
-        restore.SetBounds(580, 496, 260, 42);
+        restore.SetBounds(580, 598, 260, 42);
         restore.Click += async (_, _) =>
         {
             if (busy)
@@ -393,24 +413,24 @@ internal sealed class MainForm : Form
         };
 
         openResults.Text = "Open Results Folder";
-        openResults.SetBounds(20, 552, 230, 36);
+        openResults.SetBounds(20, 650, 230, 36);
         openResults.Click += (_, _) => OpenResultsFolder();
 
         startCompanion.Text = "START FRAME-TIME TOOL";
-        startCompanion.SetBounds(265, 552, 300, 36);
+        startCompanion.SetBounds(265, 650, 300, 36);
         startCompanion.Click += (_, _) => StartFrameTimeTool();
 
         startGame.Text = "START CYBERPUNK";
-        startGame.SetBounds(580, 552, 260, 36);
+        startGame.SetBounds(580, 650, 260, 36);
         startGame.Click += async (_, _) => await StartCyberpunkAsync();
 
-        restoreOutcome.SetBounds(20, 604, 820, 34);
+        restoreOutcome.SetBounds(20, 690, 820, 34);
         restoreOutcome.Font = new Font("Segoe UI Semibold", 10F);
         restoreOutcome.TextAlign = ContentAlignment.MiddleLeft;
         restoreOutcome.Visible = false;
 
         profilerPage.Controls.AddRange([
-            title, back, statusGroup, captureGroup, filesGroup,
+            title, back, statusGroup, captureGroup, readyGroup,
             install, collect, restore, openResults, startCompanion, startGame, restoreOutcome
         ]);
     }
@@ -430,6 +450,7 @@ internal sealed class MainForm : Form
         {
             profilerPage.BringToFront();
             RenderStatus(lastStatus);
+            RenderReadyState(lastStatus);
         }
     }
 
@@ -443,12 +464,14 @@ internal sealed class MainForm : Form
         {
             lastStatus = null;
             status.Text =
-                "Game:       NOT FOUND\r\n" +
-                "RED4ext:    -\r\n" +
-                "GRSP:       -\r\n" +
-                "Live captures: -";
+                "Game: Not found ❌\r\n" +
+                "RED4ext: Not installed ❌\r\n" +
+                "REDscript Profiler: unavailable ❌\r\n" +
+                "G-REDscript PROFILER IS NOT INSTALLED. ❌\r\n" +
+                "Live Files: -";
             RenderSetupGameStatus();
             RenderManagedFiles(null);
+            RenderReadyState(null);
             SetActionState(null);
             return;
         }
@@ -461,6 +484,7 @@ internal sealed class MainForm : Form
             RenderStatus(snapshot);
             RenderSetupGameStatus();
             RenderManagedFiles(snapshot);
+            RenderReadyState(snapshot);
 
             if (!captureTitle.Focused &&
                 !string.IsNullOrWhiteSpace(snapshot.CaptureTitle) &&
@@ -479,6 +503,7 @@ internal sealed class MainForm : Form
             status.Text = "STATUS ERROR:\r\n" + ex.Message;
             RenderSetupGameStatus();
             RenderManagedFiles(null);
+            RenderReadyState(null);
             SetActionState(null);
 
             if (!silent)
@@ -514,25 +539,88 @@ internal sealed class MainForm : Form
             return;
         }
 
-        var dll = snapshot.State switch
+        var profilerLine = snapshot.State switch
         {
-            "INSTALLED_CURRENT" => "INSTALLED · CURRENT · MANAGED",
-            "PREEXISTING_CURRENT" => "INSTALLED · CURRENT · UNMANAGED",
-            "INSTALLED_OTHER_VERSION" => "INSTALLED · DIFFERENT VERSION",
-            "INSTALLED_OTHER_PACKAGE" => "INSTALLED · DIFFERENT MANAGED BUILD",
-            "LEGACY_GRSP_PRESENT" => "LEGACY ALPHA DLL DETECTED",
-            "NOT_INSTALLED" => "NOT INSTALLED",
-            _ => snapshot.State
+            "INSTALLED_CURRENT" => "Installed and managed ✅",
+            "PREEXISTING_CURRENT" => snapshot.CaptureTitlePresent
+                ? "Exact profiler build already installed ✅"
+                : "Profiler DLL present, data/metadata incomplete ⚠️",
+            "NOT_INSTALLED" => "Ready to deploy DLL, results folder and metadata ⚠️",
+            "INSTALLED_OTHER_VERSION" => "Different G-REDscript Profiler version already installed ❌",
+            "INSTALLED_OTHER_PACKAGE" => "Different managed G-REDscript Profiler build installed ❌",
+            "LEGACY_GRSP_PRESENT" => "Legacy alpha profiler DLL detected ❌",
+            "STALE_DATA" => "Existing profiler data folder is not clean ❌",
+            "MANAGED_DLL_CHANGED" => "Managed profiler DLL changed ❌",
+            "MANAGED_DLL_MISSING" => "Managed profiler DLL missing ❌",
+            _ => snapshot.Message + " ⚠️"
         };
 
-        status.Text =
-            $"Game:       {(snapshot.GameRootValid ? "FOUND" : "NOT FOUND")}\r\n" +
-            $"RED4ext:    {(snapshot.Red4extPresent ? "FOUND" : "NOT FOUND")}\r\n" +
-            $"GRSP:       {dll}\r\n" +
-            $"Live captures: {snapshot.CompletedCaptureCount}\r\n" +
-            snapshot.Message;
+        SyncSettingsFromUi();
+        var companion = CompanionProfilerService.Inspect(appSettings);
+        var companionConfigured = HasConfiguredCompanion();
 
+        var frameLine = companionConfigured
+            ? $"Frame-Time Profiler: {companion.DisplayName} found ✅"
+            : "Frame-Time Profiler: Not provided ❌";
+
+        string syncLines;
+        if (!companionConfigured)
+        {
+            syncLines =
+                "Synced keybind: Need frame capture tool ⚠️\r\n" +
+                "    - G-REDscript Profiler: F11 ✅";
+        }
+        else if (companion.StartKeyKnown && companion.StartKeyIsF11)
+        {
+            syncLines =
+                "Synced keybind: YES ✅\r\n" +
+                "    - G-REDscript Profiler: F11 ✅\r\n" +
+                "    - Frame-Time Profiler: F11 ✅";
+        }
+        else
+        {
+            var externalKey = companion.StartKeyKnown
+                ? companion.StartKey + " ⚠️"
+                : "Unknown ⚠️";
+            syncLines =
+                "Synced keybind: NO ❌\r\n" +
+                "    - G-REDscript Profiler: F11 ✅\r\n" +
+                $"    - Frame-Time Profiler: {externalKey}";
+        }
+
+        var installed = IsProfilerReady(snapshot);
+
+        status.Text =
+            $"Game: {(snapshot.GameRootValid ? "Found ✅" : "Not found ❌")}\r\n" +
+            $"RED4ext: {(snapshot.Red4extPresent ? "Installed ✅" : "Not installed ❌")}\r\n" +
+            $"REDscript Profiler: {profilerLine}\r\n" +
+            "optional:\r\n" +
+            frameLine + "\r\n" +
+            syncLines + "\r\n\r\n" +
+            $"G-REDscript PROFILER IS {(installed ? "INSTALLED. ✅" : "NOT INSTALLED. ❌")}\r\n" +
+            $"Live Files: {snapshot.CompletedCaptureCount}";
+        
         SetActionState(snapshot);
+    }
+
+    private bool IsProfilerReady(StatusInfo? snapshot) =>
+        snapshot is not null &&
+        snapshot.GameRootValid &&
+        snapshot.Red4extPresent &&
+        snapshot.State is "INSTALLED_CURRENT" or "PREEXISTING_CURRENT" &&
+        snapshot.CaptureTitlePresent;
+
+    private bool HasConfiguredCompanion() =>
+        pairFrameTime.Checked &&
+        File.Exists(companionExe.Text.Trim()) &&
+        Directory.Exists(companionResults.Text.Trim());
+
+    private void RenderReadyState(StatusInfo? snapshot)
+    {
+        var ready = IsProfilerReady(snapshot);
+        readyHeading.Text = ready ? "PROFILER IS READY!" : "PROFILER IS NOT READY!";
+        readyHeading.ForeColor = ready ? Color.ForestGreen : Color.Firebrick;
+        readyInstructions.Enabled = ready;
     }
 
     private void RenderManagedFiles(StatusInfo? snapshot)
@@ -597,12 +685,7 @@ internal sealed class MainForm : Form
         restore.Enabled = !busy && managedCurrent;
         saveCaptureTitle.Enabled = !busy && validInstalled && snapshot.CaptureTitlePresent;
 
-        var companionPath = companionExe.Text.Trim();
-        startCompanion.Enabled =
-            !busy &&
-            pairFrameTime.Checked &&
-            !string.IsNullOrWhiteSpace(companionPath) &&
-            File.Exists(companionPath);
+        startCompanion.Enabled = !busy && HasConfiguredCompanion();
 
         var gameExe = GetGameExe(snapshot.GameRoot);
         var gameRunning = ManagerServices.IsGameRunning();
@@ -686,7 +769,7 @@ internal sealed class MainForm : Form
             CompanionCollectResult? companion = null;
             string? companionError = null;
 
-            if (pairFrameTime.Checked)
+            if (HasConfiguredCompanion())
             {
                 try
                 {
@@ -702,8 +785,8 @@ internal sealed class MainForm : Form
             if (Directory.Exists(destination))
                 Process.Start(new ProcessStartInfo(destination) { UseShellExecute = true });
 
-            var companionText = !pairFrameTime.Checked
-                ? "Frame-time companion: disabled."
+            var companionText = !HasConfiguredCompanion()
+                ? "Frame-time companion: not configured; GRSP collected normally."
                 : companionError is not null
                     ? "Frame-time companion: GRSP collection succeeded, but companion copy failed: " + companionError
                     : "Frame-time companion: " + (companion?.Message ?? "not collected.");
