@@ -1,4 +1,4 @@
-# GRSP 0.5.0 Output Schema
+# GRSP 1.0.0 Output Schema
 
 ## Public files
 
