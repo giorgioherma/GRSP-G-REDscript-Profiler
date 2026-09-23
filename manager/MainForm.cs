@@ -9,7 +9,7 @@ internal sealed class MainForm : Form
     private readonly TextBox _scenario = new() { Width = 180 };
     private readonly Label _status = new() { AutoSize = true, MaximumSize = new Size(940, 0) };
     private readonly RichTextBox _log = new() { Dock = DockStyle.Fill, ReadOnly = true, Height = 145 };
-    private readonly Button _install = new() { Text = "INSTALL / UPDATE", AutoSize = true };
+    private readonly Button _install = new() { Text = "INSTALL", AutoSize = true };
     private readonly Button _restore = new() { Text = "RESTORE / UNINSTALL", AutoSize = true };
     private readonly Button _collect = new() { Text = "COLLECT LATEST", AutoSize = true };
     private readonly Button _saveScenario = new() { Text = "SAVE SCENARIO", AutoSize = true };
