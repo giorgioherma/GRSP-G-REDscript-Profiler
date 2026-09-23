@@ -44,8 +44,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          target="a90b6040681277648eeed6b991244d0778b5984e"
+          target="7f64d2f7b8594cbd9ec148ee49e576ee28ffd625"
 
+          # Tag the final stable product/docs commit. Later commits only change
+          # GitHub Actions release plumbing and are deliberately not part of the
+          # product tag, avoiding GitHub App workflow-ref restrictions.
           # Remove a stale target tag if an earlier release attempt created one.
           git push origin :refs/tags/v1.0.0 2>/dev/null || true
 
