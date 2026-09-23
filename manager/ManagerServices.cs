@@ -9,6 +9,7 @@ internal static class ManagerServices
 {
     public const string ProductVersion = "0.5.0 Public Preview";
     public const string PluginFileName = "G-REDscript-Profiler.dll";
+    public const string LegacyPluginFileName = "redscript_profiler_alpha.dll";
     public const string DataFolderName = "G-REDscript-Profiler";
     public const string CaptureTitleFileName = "CaptureTitle.txt";
     public const string StateFileName = ".manager_state.json";
@@ -46,7 +47,9 @@ internal static class ManagerServices
         status.PayloadHash = status.PayloadPresent ? Sha256(PayloadDll) : "";
 
         var target = TargetDll(gameRoot);
+        var legacyTarget = LegacyTargetDll(gameRoot);
         var statePath = StatePath(gameRoot);
+        status.LegacyDllPresent = File.Exists(legacyTarget);
         status.DllPresent = File.Exists(target);
         status.InstalledHash = status.DllPresent ? Sha256(target) : "";
         status.DllMatchesCurrentPackage =
@@ -108,7 +111,12 @@ internal static class ManagerServices
         }
         else if (string.IsNullOrEmpty(status.State))
         {
-            if (DirectoryHasEntries(DataDirectory(gameRoot)))
+            if (status.LegacyDllPresent)
+            {
+                status.State = "LEGACY_GRSP_PRESENT";
+                status.Message = "A legacy redscript_profiler_alpha.dll installation was detected. Restore/remove it before installing G-REDscript Profiler so two profiler DLLs cannot load together.";
+            }
+            else if (DirectoryHasEntries(DataDirectory(gameRoot)))
             {
                 status.State = "STALE_DATA";
                 status.Message = "The G-REDscript-Profiler data folder contains files from another or incomplete installation. It will not be overwritten.";
@@ -143,6 +151,10 @@ internal static class ManagerServices
         var target = TargetDll(gameRoot);
         var dataDir = DataDirectory(gameRoot);
         var statePath = StatePath(gameRoot);
+
+        if (File.Exists(LegacyTargetDll(gameRoot)))
+            throw new InvalidOperationException(
+                "A legacy redscript_profiler_alpha.dll installation was detected. Restore/remove it first. G-REDscript Profiler will never install beside an older profiler DLL.");
 
         if (File.Exists(target))
         {
@@ -271,6 +283,8 @@ internal static class ManagerServices
     public static string CollectLatest(string gameRoot)
     {
         EnsureValidRoot(gameRoot);
+        if (IsGameRunning())
+            throw new InvalidOperationException("Close Cyberpunk 2077 before collecting results so the live profiler folder can be moved cleanly.");
         return CollectLiveResultsInternal(gameRoot, requireCompletedCapture: true)
             ?? throw new InvalidOperationException("No completed G-REDscript Profiler capture was found.");
     }
@@ -455,6 +469,9 @@ internal static class ManagerServices
 
     private static string TargetDll(string gameRoot) =>
         Path.Combine(PluginDirectory(gameRoot), PluginFileName);
+
+    private static string LegacyTargetDll(string gameRoot) =>
+        Path.Combine(PluginDirectory(gameRoot), LegacyPluginFileName);
 
     private static string StatePath(string gameRoot) =>
         Path.Combine(DataDirectory(gameRoot), StateFileName);
@@ -644,6 +661,7 @@ internal sealed class StatusInfo
     public bool PayloadPresent { get; set; }
     public string PayloadHash { get; set; } = "";
     public bool DllPresent { get; set; }
+    public bool LegacyDllPresent { get; set; }
     public string InstalledHash { get; set; } = "";
     public bool DllMatchesCurrentPackage { get; set; }
     public bool ManagedStatePresent { get; set; }
