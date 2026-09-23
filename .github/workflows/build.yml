@@ -160,15 +160,18 @@ jobs:
             }
           }
 
-          # Remove dangling version tags from pre-1.0 builds as well.
-          $tagRefs = @(gh api "repos/$env:GITHUB_REPOSITORY/git/matching-refs/tags/" --jq '.[].ref')
-          foreach ($ref in $tagRefs) {
-            if ([string]::IsNullOrWhiteSpace($ref)) { continue }
-            $name = $ref -replace '^refs/tags/', ''
-            if ($name -match '^(v)?[0-9]' -and $name -ne $tag) {
-              Write-Host "Removing old version tag $name"
+          # Remove every version tag, including a temporary target tag from any
+          # previous beta/prerelease workflow. The stable release recreates v1.0.0
+          # at this exact commit after packaging succeeds.
+          $tagNames = @(gh api --paginate "repos/$env:GITHUB_REPOSITORY/tags?per_page=100" --jq '.[].name')
+          if ($LASTEXITCODE -ne 0) { throw 'Could not enumerate repository tags.' }
+
+          foreach ($name in $tagNames) {
+            if ([string]::IsNullOrWhiteSpace($name)) { continue }
+            if ($name -match '^(v)?[0-9]') {
+              Write-Host "Removing version tag $name"
               gh api --method DELETE "repos/$env:GITHUB_REPOSITORY/git/refs/tags/$name" | Out-Null
-              if ($LASTEXITCODE -ne 0) { throw "Could not delete old tag $name" }
+              if ($LASTEXITCODE -ne 0) { throw "Could not delete tag $name" }
             }
           }
 
