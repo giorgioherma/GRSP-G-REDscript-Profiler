@@ -97,7 +97,7 @@ internal sealed class MainForm : Form
 
         var subtitle = new Label
         {
-            Text = "Select Cyberpunk 2077. RED4ext is required; frame-time pairing is optional.",
+            Text = "Select Cyberpunk 2077. RED4ext is required.",
             AutoSize = true,
             ForeColor = SystemColors.GrayText,
             Location = new Point(22, 55)
@@ -153,15 +153,22 @@ internal sealed class MainForm : Form
 
         var explanation = new Label
         {
-            Text = "G-REDscript Profiler works fully standalone. Pairing it with a frame-time capture tool lets you compare REDscript activity with actual frame-time behavior. This build is designed and tested alongside CapFrameX, but you can use another profiler or another compatible CapFrameX version.",
+            Text = "Pairing GRSP with a frame-time capture tool lets you see whether REDscript activity lines up with actual frame-time spikes or sustained frame-time cost. For synchronized captures, start both tools with F11 before the section you want to measure, then press F11 again to stop the capture.",
             MaximumSize = new Size(770, 0),
             AutoSize = true,
             Location = new Point(18, 62)
         };
 
-        capFrameXLink.Text = "CapFrameX releases";
+        var recommendation = new Label
+        {
+            Text = "Any frame-time capture tool can work with G-REDscript Profiler, but it was developed and tested with",
+            AutoSize = true,
+            Location = new Point(18, 118)
+        };
+
+        capFrameXLink.Text = "CapFrameX 1.9.1.2 Beta";
         capFrameXLink.AutoSize = true;
-        capFrameXLink.Location = new Point(18, 118);
+        capFrameXLink.Location = new Point(18, 140);
         capFrameXLink.LinkClicked += (_, _) =>
         {
             try
@@ -177,21 +184,13 @@ internal sealed class MainForm : Form
             }
         };
 
-        var syncHint = new Label
-        {
-            Text = "For synchronized captures, use F11 in both tools. GRSP always uses F11.",
-            AutoSize = true,
-            ForeColor = SystemColors.GrayText,
-            Location = new Point(150, 118)
-        };
-
         var exeLabel = new Label
         {
             Text = "Profiler executable",
             AutoSize = true,
-            Location = new Point(18, 158)
+            Location = new Point(18, 176)
         };
-        companionExe.SetBounds(18, 180, 680, 26);
+        companionExe.SetBounds(18, 198, 680, 26);
         companionExe.TextChanged += (_, _) =>
         {
             if (loadingSettings)
@@ -202,7 +201,7 @@ internal sealed class MainForm : Form
         };
 
         browseCompanionExe.Text = "Browse...";
-        browseCompanionExe.SetBounds(708, 178, 92, 30);
+        browseCompanionExe.SetBounds(708, 196, 92, 30);
         browseCompanionExe.Click += (_, _) =>
         {
             using var dialog = new OpenFileDialog
@@ -229,9 +228,9 @@ internal sealed class MainForm : Form
         {
             Text = "Capture / results folder",
             AutoSize = true,
-            Location = new Point(18, 218)
+            Location = new Point(18, 236)
         };
-        companionResults.SetBounds(18, 240, 680, 26);
+        companionResults.SetBounds(18, 258, 680, 26);
         companionResults.TextChanged += (_, _) =>
         {
             if (loadingSettings)
@@ -241,7 +240,7 @@ internal sealed class MainForm : Form
         };
 
         browseCompanionResults.Text = "Browse...";
-        browseCompanionResults.SetBounds(708, 238, 92, 30);
+        browseCompanionResults.SetBounds(708, 256, 92, 30);
         browseCompanionResults.Click += (_, _) =>
         {
             using var dialog = new FolderBrowserDialog
@@ -257,11 +256,11 @@ internal sealed class MainForm : Form
             SaveSettingsFromUi();
         };
 
-        companionStatus.SetBounds(18, 282, 780, 62);
+        companionStatus.SetBounds(18, 300, 780, 62);
         companionStatus.Font = new Font("Consolas", 9.5F);
 
         companionGroup.Controls.AddRange([
-            pairFrameTime, explanation, capFrameXLink, syncHint,
+            pairFrameTime, explanation, recommendation, capFrameXLink,
             exeLabel, companionExe, browseCompanionExe,
             resultsLabel, companionResults, browseCompanionResults,
             companionStatus
@@ -351,7 +350,7 @@ internal sealed class MainForm : Form
         };
         captureGroup.Controls.AddRange([captureLabel, captureTitle, saveCaptureTitle, captureHint]);
 
-        var filesGroup = new GroupBox { Text = "Files / safety" };
+        var filesGroup = new GroupBox { Text = "Restore" };
         filesGroup.SetBounds(20, 386, 820, 94);
         managedFiles.SetBounds(18, 24, 775, 58);
         managedFiles.MaximumSize = new Size(775, 0);
@@ -379,8 +378,7 @@ internal sealed class MainForm : Form
             {
                 answer = MessageBox.Show(
                     this,
-                    "Restore the G-REDscript Profiler-managed game state?\r\n\r\n" +
-                    "Any remaining GRSP live output is archived first. The profiler DLL and managed data are removed; the final empty G-REDscript-Profiler folder is intentionally left in red4ext\\plugins.",
+                    "All files will be returned to their original state.",
                     Text,
                     MessageBoxButtons.YesNo,
                     MessageBoxIcon.Warning);
@@ -539,15 +537,7 @@ internal sealed class MainForm : Form
 
     private void RenderManagedFiles(StatusInfo? snapshot)
     {
-        if (snapshot is null)
-        {
-            managedFiles.Text = "No files will be changed until a valid Cyberpunk 2077 + RED4ext installation is selected.";
-            return;
-        }
-
-        managedFiles.Text =
-            "Installed shape: red4ext\\plugins\\G-REDscript-Profiler.dll + sibling G-REDscript-Profiler\\ data folder.\r\n" +
-            "GRSP live output is moved and cleared on collection. External frame-time captures are COPY ONLY and their originals are never changed.";
+        managedFiles.Text = "After restore, the game folder will be reverted to its original state.";
     }
 
     private void RefreshCompanionStatus()
@@ -749,15 +739,15 @@ internal sealed class MainForm : Form
             SetBusy(true);
             restoreOutcome.Refresh();
 
-            var message = await Task.Run(() => ManagerServices.Restore(gameRoot.Text.Trim()));
+            _ = await Task.Run(() => ManagerServices.Restore(gameRoot.Text.Trim()));
             var verified = await Task.Run(() => ManagerServices.GetStatus(gameRoot.Text.Trim()));
 
             if (verified.ManagedStatePresent || verified.DllPresent)
                 throw new InvalidOperationException("Restore returned, but managed profiler state or DLL is still present.");
 
             lastStatus = verified;
-            ShowRestoreOutcome(true, "RESTORE SUCCESSFUL — profiler removed; empty data folder retained.");
-            MessageBox.Show(this, message, Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            ShowRestoreOutcome(true, "RESTORE SUCCESSFUL — files returned to their original state.");
+            MessageBox.Show(this, "All files have been returned to their original state.", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {
