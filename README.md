@@ -66,7 +66,7 @@ Headless use is available through the same EXE, for example:
 ```text
 G-REDscript-Profiler.exe --status --game "D:\Games\Cyberpunk 2077" --json
 G-REDscript-Profiler.exe --install --game "D:\Games\Cyberpunk 2077" --json
-G-REDscript-Profiler.exe --scenario --game "D:\Games\Cyberpunk 2077" --scenario COMBAT --json
+G-REDscript-Profiler.exe --scenario COMBAT --game "D:\Games\Cyberpunk 2077" --json
 G-REDscript-Profiler.exe --collect --game "D:\Games\Cyberpunk 2077" --json
 G-REDscript-Profiler.exe --restore --game "D:\Games\Cyberpunk 2077" --json
 ```
