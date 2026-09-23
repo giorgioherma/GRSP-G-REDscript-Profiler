@@ -56,11 +56,13 @@
     "game_root": "manual game-root payload retained for compatibility",
     "standalone": {
       "manager": "G-REDscript-Profiler.exe",
-      "manager_runtime": ".NET 8",
+      "manager_runtime": ".NET 8 self-contained win-x64",
       "payload_dir": "payload",
       "capture_engine": "payload/redscript_profiler_alpha.dll",
       "lifecycle_only": true,
-      "native_results_redirected": false
+      "native_results_redirected": false,
+      "headless_json": "compact one-line JSON",
+      "headless_game_arg": "--game"
     }
   },
   "manager_policy": {
