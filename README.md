@@ -50,7 +50,7 @@ It can:
 
 ```text
 select/check the Cyberpunk root
-install or update the packaged GRSP DLL
+install the exact packaged GRSP DLL; a different managed package is restored first rather than overwritten in place
 back up and verify a pre-existing DLL before replacement
 preserve and back up a pre-existing RSP_Scenario.txt
 edit the scenario only while the file remains in known managed state
