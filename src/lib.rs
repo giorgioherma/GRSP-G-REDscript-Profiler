@@ -1516,27 +1516,55 @@ fn function_name(func: &Function) -> String {
     }
 }
 
+fn script_relative_path(path: &str) -> Option<String> {
+    let normalized = path.replace('/', "\\");
+    let lower = normalized.to_ascii_lowercase();
+    let relative_marker = "r6\\scripts\\";
+    let absolute_marker = "\\r6\\scripts\\";
+
+    let start = if lower.starts_with(relative_marker) {
+        relative_marker.len()
+    } else if let Some(pos) = lower.find(absolute_marker) {
+        pos + absolute_marker.len()
+    } else {
+        return None;
+    };
+
+    let tail = normalized[start..].trim_start_matches('\\');
+    if tail.is_empty() {
+        None
+    } else {
+        Some(tail.to_owned())
+    }
+}
+
 fn is_mod_source(path: &str) -> bool {
-    let p = path.replace('/', "\\").to_ascii_lowercase();
-    p.contains("\\r6\\scripts\\")
+    script_relative_path(path).is_some()
 }
 
 fn owner_from_path(path: &str) -> String {
-    let normalized = path.replace('/', "\\");
-    let lower = normalized.to_ascii_lowercase();
-    let marker = "\\r6\\scripts\\";
+    let Some(tail) = script_relative_path(path) else {
+        return "<non-r6-script>".to_owned();
+    };
 
-    if let Some(pos) = lower.find(marker) {
-        let tail = &normalized[pos + marker.len()..];
-        if let Some((owner, _)) = tail.split_once('\\') {
-            return owner.to_owned();
-        }
-        if !tail.is_empty() {
-            return tail.to_owned();
-        }
+    let mut parts = tail.split('\\').filter(|part| !part.is_empty());
+    let Some(first) = parts.next() else {
+        return "<non-r6-script>".to_owned();
+    };
+
+    // Preserve the layout mods already ship with:
+    //   r6/scripts/ModName/...  -> ModName
+    //   r6/scripts/Foo.reds     -> Foo
+    // No GRSP-specific manifest, folder rename or wrapper layout is required.
+    if parts.next().is_some() {
+        return first.to_owned();
     }
 
-    "<non-r6-script>".to_owned()
+    if first.len() > 5 && first.to_ascii_lowercase().ends_with(".reds") {
+        return first[..first.len() - 5].to_owned();
+    }
+
+    first.to_owned()
 }
 
 fn cadence_bucket(gap_us: u64) -> usize {
