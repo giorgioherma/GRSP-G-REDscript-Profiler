@@ -1,9 +1,14 @@
-name: Build GRSP 0.5.0 Public Preview
+name: Build G-REDscript Profiler
+
+permissions:
+  contents: write
+  actions: read
 
 on:
   workflow_dispatch:
   push:
     branches: [ main, master, 'manager/**', 'profiler/**' ]
+  pull_request:
 
 jobs:
   build:
@@ -11,6 +16,39 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Resolve and verify product version
+        id: product_version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $manifest = Get-Content MANIFEST.json -Raw | ConvertFrom-Json
+          $version = [string]$manifest.version
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw 'MANIFEST.json version is empty.'
+          }
+
+          $cargo = Get-Content Cargo.toml -Raw
+          $cargoMatch = [regex]::Match($cargo, '(?m)^version\s*=\s*"([^"]+)"')
+          if (!$cargoMatch.Success) {
+            throw 'Could not read Cargo.toml package version.'
+          }
+          $cargoVersion = $cargoMatch.Groups[1].Value
+
+          [xml]$managerProject = Get-Content manager\GRedscriptProfiler.Manager.csproj -Raw
+          $managerVersion = [string]$managerProject.Project.PropertyGroup.Version
+
+          if ($cargoVersion -ne $version) {
+            throw "Version mismatch: MANIFEST.json=$version Cargo.toml=$cargoVersion"
+          }
+          if ($managerVersion -ne $version) {
+            throw "Version mismatch: MANIFEST.json=$version manager csproj=$managerVersion"
+          }
+
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "PRODUCT_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Canonical product version: $version"
 
       - name: Install .NET 8
         uses: actions/setup-dotnet@v4
@@ -28,43 +66,117 @@ jobs:
       - name: Build release DLL
         run: cargo build --release
 
-      - name: Stage game-root package
+      - name: Verify stable binaries
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path package\red4ext\plugins | Out-Null
-          New-Item -ItemType Directory -Force -Path package\red4ext\plugins\G-REDscript-Profiler | Out-Null
-          Copy-Item target\release\g_redscript_profiler.dll package\red4ext\plugins\G-REDscript-Profiler.dll
-          Copy-Item CaptureTitle.txt package\red4ext\plugins\G-REDscript-Profiler\CaptureTitle.txt
-          Copy-Item README.md package\GRSP_README.txt
-          Copy-Item MANIFEST.json package\GRSP_MANIFEST.json
-          Copy-Item FRAMEWORK_AUTHOR_GUIDE.md package\GRSP_FRAMEWORK_AUTHOR_GUIDE.txt
-          Copy-Item OUTPUT_SCHEMA.md package\GRSP_OUTPUT_SCHEMA.txt
-          Copy-Item PUBLIC_RELEASE_NOTES.md package\GRSP_RELEASE_NOTES.txt
-          Copy-Item THIRD_PARTY_NOTICE.txt package\GRSP_THIRD_PARTY_NOTICE.txt
+          $ErrorActionPreference = 'Stop'
+          if (!(Test-Path manager-publish\G-REDscript-Profiler.exe)) {
+            throw 'Standalone manager EXE is missing.'
+          }
+          if (!(Test-Path target\release\g_redscript_profiler.dll)) {
+            throw 'Native profiler DLL is missing.'
+          }
 
-      - name: Upload game-root artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: GRSP-0.5.0-PublicPreview-GameRoot
-          path: package
+          $managerVersion = (Get-Item manager-publish\G-REDscript-Profiler.exe).VersionInfo.ProductVersion
+          if ([string]::IsNullOrWhiteSpace($managerVersion) -or !$managerVersion.StartsWith($env:PRODUCT_VERSION, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Manager ProductVersion mismatch: expected prefix $env:PRODUCT_VERSION, got $managerVersion"
+          }
 
-      - name: Stage standalone package
+      - name: Stage portable release
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path standalone\payload | Out-Null
-          New-Item -ItemType Directory -Force -Path standalone\RESULTS | Out-Null
-          Copy-Item manager-publish\G-REDscript-Profiler.exe standalone\G-REDscript-Profiler.exe
-          Copy-Item target\release\g_redscript_profiler.dll standalone\payload\G-REDscript-Profiler.dll
-          Copy-Item CaptureTitle.txt standalone\payload\CaptureTitle.txt
-          Copy-Item README.md standalone\GRSP_README.txt
-          Copy-Item MANIFEST.json standalone\GRSP_MANIFEST.json
-          Copy-Item FRAMEWORK_AUTHOR_GUIDE.md standalone\GRSP_FRAMEWORK_AUTHOR_GUIDE.txt
-          Copy-Item OUTPUT_SCHEMA.md standalone\GRSP_OUTPUT_SCHEMA.txt
-          Copy-Item PUBLIC_RELEASE_NOTES.md standalone\GRSP_RELEASE_NOTES.txt
-          Copy-Item THIRD_PARTY_NOTICE.txt standalone\GRSP_THIRD_PARTY_NOTICE.txt
+          $ErrorActionPreference = 'Stop'
+          $portableRoot = 'portable'
+          $productRoot = Join-Path $portableRoot 'G-REDscript-Profiler'
 
-      - name: Upload standalone artifact
+          if (Test-Path $portableRoot) {
+            Remove-Item $portableRoot -Recurse -Force
+          }
+
+          New-Item -ItemType Directory -Force $productRoot | Out-Null
+          New-Item -ItemType Directory -Force (Join-Path $productRoot 'payload') | Out-Null
+          New-Item -ItemType Directory -Force (Join-Path $productRoot 'RESULTS') | Out-Null
+          New-Item -ItemType Directory -Force (Join-Path $productRoot 'docs') | Out-Null
+
+          Copy-Item manager-publish\G-REDscript-Profiler.exe (Join-Path $productRoot 'G-REDscript-Profiler.exe')
+          Copy-Item target\release\g_redscript_profiler.dll (Join-Path $productRoot 'payload\G-REDscript-Profiler.dll')
+          Copy-Item CaptureTitle.txt (Join-Path $productRoot 'payload\CaptureTitle.txt')
+
+          Copy-Item README.md (Join-Path $productRoot 'README.md')
+          Copy-Item CHANGELOG.md (Join-Path $productRoot 'CHANGELOG.md')
+          Copy-Item MANIFEST.json (Join-Path $productRoot 'MANIFEST.json')
+          Copy-Item PUBLIC_RELEASE_NOTES.md (Join-Path $productRoot 'RELEASE_NOTES.md')
+
+          Copy-Item FRAMEWORK_AUTHOR_GUIDE.md (Join-Path $productRoot 'docs\FRAMEWORK_AUTHOR_GUIDE.md')
+          Copy-Item OUTPUT_SCHEMA.md (Join-Path $productRoot 'docs\OUTPUT_SCHEMA.md')
+          Copy-Item docs\TOTAL_INTEGRATION_CONTRACT.md (Join-Path $productRoot 'docs\TOTAL_INTEGRATION_CONTRACT.md')
+          Copy-Item THIRD_PARTY_NOTICE.txt (Join-Path $productRoot 'docs\THIRD_PARTY_NOTICE.txt')
+
+          if (!(Test-Path (Join-Path $productRoot 'G-REDscript-Profiler.exe'))) { throw 'Portable manager EXE missing.' }
+          if (!(Test-Path (Join-Path $productRoot 'payload\G-REDscript-Profiler.dll'))) { throw 'Portable DLL payload missing.' }
+          if (!(Test-Path (Join-Path $productRoot 'payload\CaptureTitle.txt'))) { throw 'Portable CaptureTitle seed missing.' }
+          if (!(Test-Path (Join-Path $productRoot 'RESULTS') -PathType Container)) { throw 'Portable RESULTS directory missing.' }
+
+          $asset = "G-REDscript-Profiler-v$env:PRODUCT_VERSION.zip"
+          if (Test-Path $asset) { Remove-Item $asset -Force }
+          Compress-Archive -Path $productRoot -DestinationPath $asset -CompressionLevel Optimal
+
+          $hash = (Get-FileHash -LiteralPath $asset -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $asset" | Set-Content -Encoding ASCII "$asset.sha256.txt"
+
+          "PUBLIC_ASSET=$asset" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "PUBLIC_SHA256=$hash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+          Write-Host "Portable release: $asset"
+          Write-Host "SHA256: $hash"
+
+      - name: Upload portable Windows artifact
         uses: actions/upload-artifact@v4
         with:
-          name: GRSP-0.5.0-PublicPreview-Standalone
-          path: standalone
+          name: G-REDscript-Profiler-v${{ steps.product_version.outputs.version }}
+          path: |
+            G-REDscript-Profiler-v${{ steps.product_version.outputs.version }}.zip
+            G-REDscript-Profiler-v${{ steps.product_version.outputs.version }}.zip.sha256.txt
+
+      - name: Publish clean v1.0.0 stable release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.head_commit.message == 'Release v1.0.0'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = "v$env:PRODUCT_VERSION"
+          $title = "GRSP_G-REDscript_Profiler_v$env:PRODUCT_VERSION"
+          $asset = $env:PUBLIC_ASSET
+          $shaAsset = "$asset.sha256.txt"
+
+          # First stable release: remove all old alpha/preview Releases and their tags.
+          $releaseTags = @(gh release list --repo $env:GITHUB_REPOSITORY --limit 100 --json tagName --jq '.[].tagName')
+          foreach ($oldTag in $releaseTags) {
+            if (![string]::IsNullOrWhiteSpace($oldTag)) {
+              Write-Host "Removing old release $oldTag"
+              gh release delete $oldTag --repo $env:GITHUB_REPOSITORY --yes --cleanup-tag
+              if ($LASTEXITCODE -ne 0) { throw "Could not delete old release $oldTag" }
+            }
+          }
+
+          # Remove dangling version tags from pre-1.0 builds as well.
+          $tagRefs = @(gh api "repos/$env:GITHUB_REPOSITORY/git/matching-refs/tags/" --jq '.[].ref')
+          foreach ($ref in $tagRefs) {
+            if ([string]::IsNullOrWhiteSpace($ref)) { continue }
+            $name = $ref -replace '^refs/tags/', ''
+            if ($name -match '^(v)?[0-9]' -and $name -ne $tag) {
+              Write-Host "Removing old version tag $name"
+              gh api --method DELETE "repos/$env:GITHUB_REPOSITORY/git/refs/tags/$name" | Out-Null
+              if ($LASTEXITCODE -ne 0) { throw "Could not delete old tag $name" }
+            }
+          }
+
+          $body = (Get-Content PUBLIC_RELEASE_NOTES.md -Raw).TrimEnd() +
+            [Environment]::NewLine + [Environment]::NewLine +
+            "## SHA-256" + [Environment]::NewLine + [Environment]::NewLine +
+            "`$env:PUBLIC_SHA256`  `$asset`" + [Environment]::NewLine
+          $body | Set-Content -LiteralPath release-body.md -Encoding utf8
+
+          gh release create $tag $asset $shaAsset --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title $title --notes-file release-body.md --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Could not create stable GitHub release.' }
