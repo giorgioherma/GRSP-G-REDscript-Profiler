@@ -7,7 +7,7 @@ namespace GRedscriptProfiler.Manager;
 
 internal static class ManagerServices
 {
-    public const string ProductVersion = "0.5.0 Public Preview";
+    public const string ProductVersion = "1.0.0";
     public const string PluginFileName = "G-REDscript-Profiler.dll";
     public const string LegacyPluginFileName = "redscript_profiler_alpha.dll";
     public const string DataFolderName = "G-REDscript-Profiler";
