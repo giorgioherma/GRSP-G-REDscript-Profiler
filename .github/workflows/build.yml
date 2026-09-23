@@ -18,6 +18,16 @@ jobs:
       - name: Build release DLL
         run: cargo build --release
 
+      - name: Install .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build standalone manager
+        shell: pwsh
+        run: |
+          dotnet publish manager\GRedscriptProfiler.Manager.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o manager-publish
+
       - name: Stage game-root package
         shell: pwsh
         run: |
@@ -37,3 +47,23 @@ jobs:
         with:
           name: GRSP-0.5.0-PublicPreview-GameRoot
           path: package
+
+      - name: Stage standalone package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path standalone\payload | Out-Null
+          Copy-Item manager-publish\G-REDscript-Profiler.exe standalone\G-REDscript-Profiler.exe
+          Copy-Item target\release\redscript_profiler_alpha.dll standalone\payload\redscript_profiler_alpha.dll
+          Copy-Item RSP_Scenario.txt standalone\payload\RSP_Scenario.txt
+          Copy-Item README.md standalone\GRSP_README.txt
+          Copy-Item MANIFEST.json standalone\GRSP_MANIFEST.json
+          Copy-Item FRAMEWORK_AUTHOR_GUIDE.md standalone\GRSP_FRAMEWORK_AUTHOR_GUIDE.txt
+          Copy-Item OUTPUT_SCHEMA.md standalone\GRSP_OUTPUT_SCHEMA.txt
+          Copy-Item PUBLIC_RELEASE_NOTES.md standalone\GRSP_RELEASE_NOTES.txt
+          Copy-Item THIRD_PARTY_NOTICE.txt standalone\GRSP_THIRD_PARTY_NOTICE.txt
+
+      - name: Upload standalone artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GRSP-0.5.0-PublicPreview-Standalone
+          path: standalone
