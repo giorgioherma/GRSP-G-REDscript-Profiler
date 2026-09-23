@@ -58,7 +58,11 @@ adaptive cadence for non-critical presentation work
 Evidence:
 
 - the same semantic target appears under many owners in `RSP_SharedTargets.csv`;
+- `calling_owners` shows the exact installed source owners participating without requiring any mod metadata;
+- `framework_candidate_ge3owners=true` identifies broad non-intrinsic/non-wrapper duplication worth source inspection;
 - repeated `GetGame`, system resolution, quest/fact, equipment or blackboard access.
+
+Do not treat that flag as permission to cache a result. It only identifies cross-owner duplication; lifetime, invalidation and gameplay semantics still determine whether a G-REDruntime service or per-mod adapter is safe.
 
 Candidate solution:
 

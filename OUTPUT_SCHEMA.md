@@ -46,7 +46,7 @@ Heuristic signals for framework authors. Signals are triage hints, never automat
 
 - `RSP_FunctionMap.csv` — stable function/source map.
 - `RSP_CallSites.csv` — detailed callsite aggregates.
-- `RSP_SharedTargets.csv` — targets consumed by multiple owners.
+- `RSP_SharedTargets.csv` — target aggregates with the exact sorted `calling_owners` set. `framework_candidate_ge3owners=true` marks non-intrinsic/non-wrapper targets observed from at least three owners; it is evidence for inspection, not proof that sharing/caching is semantically safe.
 - `RSP_Cadence.csv` — observed call cadence distribution.
 - `RSP_WrapperChains.csv` — repeated wrapper chains.
 - `RSP_WorkMap.csv` — workload classification view.
