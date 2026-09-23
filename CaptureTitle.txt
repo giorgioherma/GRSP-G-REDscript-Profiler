@@ -1,0 +1,4 @@
+# G-REDscript Profiler capture title.
+# The first non-comment line is read when F11 starts a capture.
+# Examples: WORLD, DRIVING, COMBAT, WANTED, UI, IDLE
+WORLD
