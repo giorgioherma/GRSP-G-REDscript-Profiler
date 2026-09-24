@@ -17,17 +17,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
       - name: Resolve and verify product version
         id: product_version
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
 
-          $manifest = Get-Content MANIFEST.json -Raw | ConvertFrom-Json
-          $version = [string]$manifest.version
+          $version = (Get-Content VERSION.txt -Raw).Trim()
           if ([string]::IsNullOrWhiteSpace($version)) {
-            throw 'MANIFEST.json version is empty.'
+            throw 'VERSION.txt is empty.'
           }
+
+          $manifest = Get-Content MANIFEST.json -Raw | ConvertFrom-Json
+          $manifestVersion = [string]$manifest.version
 
           $cargo = Get-Content Cargo.toml -Raw
           $cargoMatch = [regex]::Match($cargo, '(?m)^version\s*=\s*"([^"]+)"')
@@ -39,26 +46,24 @@ jobs:
           [xml]$managerProject = Get-Content manager\GRedscriptProfiler.Manager.csproj -Raw
           $managerVersion = [string]$managerProject.Project.PropertyGroup.Version
 
+          if ($manifestVersion -ne $version) {
+            throw "Version mismatch: VERSION.txt=$version MANIFEST.json=$manifestVersion"
+          }
           if ($cargoVersion -ne $version) {
-            throw "Version mismatch: MANIFEST.json=$version Cargo.toml=$cargoVersion"
+            throw "Version mismatch: VERSION.txt=$version Cargo.toml=$cargoVersion"
           }
           if ($managerVersion -ne $version) {
-            throw "Version mismatch: MANIFEST.json=$version manager csproj=$managerVersion"
+            throw "Version mismatch: VERSION.txt=$version manager csproj=$managerVersion"
           }
 
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "PRODUCT_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "Canonical product version: $version"
 
-      - name: Install .NET 8
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-
-      - name: Build standalone manager
+      - name: Publish self-contained managed app
         shell: pwsh
         run: |
-          dotnet publish manager\GRedscriptProfiler.Manager.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o manager-publish
+          dotnet publish manager\GRedscriptProfiler.Manager.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o manager-publish
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -70,57 +75,247 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          if (!(Test-Path manager-publish\G-REDscript-Profiler.exe)) {
-            throw 'Standalone manager EXE is missing.'
+
+          if (!(Test-Path manager-publish\G-REDscript-Profiler.App.exe)) {
+            throw 'Managed profiler app EXE is missing.'
+          }
+          if (!(Test-Path manager-publish\G-REDscript-Profiler.App.dll)) {
+            throw 'Managed profiler app DLL is missing.'
           }
           if (!(Test-Path target\release\g_redscript_profiler.dll)) {
             throw 'Native profiler DLL is missing.'
           }
 
-          $managerVersion = (Get-Item manager-publish\G-REDscript-Profiler.exe).VersionInfo.ProductVersion
+          $managerVersion = (Get-Item manager-publish\G-REDscript-Profiler.App.exe).VersionInfo.ProductVersion
           if ([string]::IsNullOrWhiteSpace($managerVersion) -or !$managerVersion.StartsWith($env:PRODUCT_VERSION, [StringComparison]::OrdinalIgnoreCase)) {
             throw "Manager ProductVersion mismatch: expected prefix $env:PRODUCT_VERSION, got $managerVersion"
           }
 
-      - name: Stage portable release
+      - name: Build native root launcher
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          if (!(Test-Path -LiteralPath $vswhere -PathType Leaf)) {
+            throw 'vswhere.exe was not found on the Windows runner.'
+          }
+
+          $vs = (& $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath).Trim()
+          if ([string]::IsNullOrWhiteSpace($vs)) {
+            throw 'A Visual Studio installation with the x64 C++ toolchain was not found.'
+          }
+
+          $vcvars = Join-Path $vs 'VC\Auxiliary\Build\vcvars64.bat'
+          if (!(Test-Path -LiteralPath $vcvars -PathType Leaf)) {
+            throw "vcvars64.bat was not found: $vcvars"
+          }
+
+          $buildDir = Join-Path (Get-Location) 'launcher-build'
+          New-Item -ItemType Directory -Force $buildDir | Out-Null
+
+          $src = (Resolve-Path 'manager\launcher.c').Path
+          $obj = Join-Path $buildDir 'launcher.obj'
+          $out = Join-Path $buildDir 'G-REDscript-Profiler.exe'
+          $script = Join-Path $buildDir 'build-launcher.cmd'
+
+          @"
+          @echo off
+          call "$vcvars" >nul
+          if errorlevel 1 exit /b %errorlevel%
+          cl.exe /nologo /O2 /MT /DUNICODE /D_UNICODE /Fo:"$obj" "$src" /link /SUBSYSTEM:WINDOWS user32.lib /OUT:"$out"
+          exit /b %errorlevel%
+          "@ | Set-Content -LiteralPath $script -Encoding ascii
+
+          & $script
+          if ($LASTEXITCODE -ne 0) {
+            throw "Native launcher build failed with exit code $LASTEXITCODE."
+          }
+          if (!(Test-Path -LiteralPath $out -PathType Leaf)) {
+            throw 'Native launcher output is missing.'
+          }
+
+      - name: Stage normal Windows app layout
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          if (Test-Path publish) {
+            Remove-Item publish -Recurse -Force
+          }
+
+          New-Item -ItemType Directory -Force publish\app | Out-Null
+          New-Item -ItemType Directory -Force publish\payload | Out-Null
+          New-Item -ItemType Directory -Force publish\RESULTS | Out-Null
+          New-Item -ItemType Directory -Force publish\docs | Out-Null
+
+          Copy-Item manager-publish\* publish\app -Recurse -Force
+
+          $satelliteDirs = @(
+            'cs','de','es','fr','it','ja','ko','pl','pt-BR','ru','tr','zh-Hans','zh-Hant'
+          )
+          foreach ($name in $satelliteDirs) {
+            $candidate = Join-Path 'publish\app' $name
+            if (Test-Path -LiteralPath $candidate -PathType Container) {
+              Remove-Item -LiteralPath $candidate -Recurse -Force
+            }
+          }
+
+          Get-ChildItem publish\app -Recurse -File -Filter '*.pdb' -ErrorAction SilentlyContinue |
+            Remove-Item -Force
+
+          Copy-Item launcher-build\G-REDscript-Profiler.exe publish\G-REDscript-Profiler.exe
+          Copy-Item MANIFEST.json publish\MANIFEST.json
+          Copy-Item VERSION.txt publish\VERSION.txt
+          Copy-Item target\release\g_redscript_profiler.dll publish\payload\G-REDscript-Profiler.dll
+          Copy-Item CaptureTitle.txt publish\payload\CaptureTitle.txt
+
+          Copy-Item README.md publish\docs\README.md
+          Copy-Item CHANGELOG.md publish\docs\CHANGELOG.md
+          Copy-Item PUBLIC_RELEASE_NOTES.md publish\docs\RELEASE_NOTES.md
+          Copy-Item FRAMEWORK_AUTHOR_GUIDE.md publish\docs\FRAMEWORK_AUTHOR_GUIDE.md
+          Copy-Item OUTPUT_SCHEMA.md publish\docs\OUTPUT_SCHEMA.md
+          Copy-Item docs\TOTAL_INTEGRATION_CONTRACT.md publish\docs\TOTAL_INTEGRATION_CONTRACT.md
+          Copy-Item THIRD_PARTY_NOTICE.txt publish\docs\THIRD_PARTY_NOTICE.txt
+
+          @'
+          G-REDscript Profiler stores collected captures in this folder.
+
+          Capture folders are created automatically by COLLECT RESULTS.
+          '@ | Set-Content -LiteralPath publish\RESULTS\README.txt -Encoding utf8
+
+      - name: Verify public package layout
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $allowedRootFiles = @(
+            'G-REDscript-Profiler.exe',
+            'MANIFEST.json',
+            'VERSION.txt'
+          )
+          $allowedRootDirs = @('app','payload','RESULTS','docs')
+
+          $unexpectedFiles = @(Get-ChildItem publish -File | Where-Object { $_.Name -notin $allowedRootFiles })
+          $unexpectedDirs = @(Get-ChildItem publish -Directory | Where-Object { $_.Name -notin $allowedRootDirs })
+          if ($unexpectedFiles.Count -gt 0 -or $unexpectedDirs.Count -gt 0) {
+            $unexpectedFiles | ForEach-Object { Write-Error "Unexpected public root file: $($_.Name)" }
+            $unexpectedDirs | ForEach-Object { Write-Error "Unexpected public root directory: $($_.Name)" }
+            throw 'Public package root is not clean.'
+          }
+
+          $required = @(
+            'publish\G-REDscript-Profiler.exe',
+            'publish\MANIFEST.json',
+            'publish\VERSION.txt',
+            'publish\app\G-REDscript-Profiler.App.exe',
+            'publish\app\G-REDscript-Profiler.App.dll',
+            'publish\app\G-REDscript-Profiler.App.deps.json',
+            'publish\app\G-REDscript-Profiler.App.runtimeconfig.json',
+            'publish\app\hostfxr.dll',
+            'publish\app\hostpolicy.dll',
+            'publish\app\coreclr.dll',
+            'publish\payload\G-REDscript-Profiler.dll',
+            'publish\payload\CaptureTitle.txt',
+            'publish\docs\README.md',
+            'publish\docs\CHANGELOG.md',
+            'publish\docs\RELEASE_NOTES.md',
+            'publish\RESULTS\README.txt'
+          )
+          foreach ($item in $required) {
+            if (!(Test-Path -LiteralPath $item -PathType Leaf)) {
+              throw "Required package file is missing: $item"
+            }
+          }
+
+          if (@(Get-ChildItem publish -File -Filter '*.dll').Count -gt 0) {
+            throw 'Runtime/managed DLLs leaked into the public root.'
+          }
+          if (@(Get-ChildItem publish -Recurse -File -Filter '*.pdb').Count -gt 0) {
+            throw 'Public PDBs leaked into the portable package.'
+          }
+
+          $launcherLength = (Get-Item publish\G-REDscript-Profiler.exe).Length
+          if ($launcherLength -gt 2MB) {
+            throw "Root launcher is unexpectedly large: $launcherLength bytes"
+          }
+
+          $publishedVersion = (Get-Content publish\VERSION.txt -Raw).Trim()
+          $publishedManifest = Get-Content publish\MANIFEST.json -Raw | ConvertFrom-Json
+          $productVersion = (Get-Item publish\app\G-REDscript-Profiler.App.exe).VersionInfo.ProductVersion
+
+          if ($publishedVersion -ne $env:PRODUCT_VERSION) {
+            throw "Published VERSION.txt mismatch: expected $env:PRODUCT_VERSION, got $publishedVersion"
+          }
+          if ([string]$publishedManifest.version -ne $env:PRODUCT_VERSION) {
+            throw "Published MANIFEST.json mismatch: expected $env:PRODUCT_VERSION, got $($publishedManifest.version)"
+          }
+          if ([string]::IsNullOrWhiteSpace($productVersion) -or !$productVersion.StartsWith($env:PRODUCT_VERSION, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Managed app ProductVersion mismatch: expected prefix $env:PRODUCT_VERSION, got $productVersion"
+          }
+
+      - name: Launcher and lifecycle smoke test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $fixture = Join-Path $env:RUNNER_TEMP 'grsp-package-fixture'
+          if (Test-Path $fixture) {
+            Remove-Item $fixture -Recurse -Force
+          }
+
+          New-Item -ItemType Directory -Force (Join-Path $fixture 'bin\x64') | Out-Null
+          New-Item -ItemType Directory -Force (Join-Path $fixture 'red4ext\plugins') | Out-Null
+          New-Item -ItemType File -Force (Join-Path $fixture 'bin\x64\Cyberpunk2077.exe') | Out-Null
+
+          $launcher = (Resolve-Path 'publish\G-REDscript-Profiler.exe').Path
+          $internal = (Resolve-Path 'publish\app\G-REDscript-Profiler.App.exe').Path
+
+          $launcherStatus = (& $launcher --status --game $fixture --json | ConvertFrom-Json)
+          if (!$launcherStatus.ok) { throw "Root launcher status failed: $($launcherStatus.error)" }
+          if (!$launcherStatus.result.PayloadPresent) { throw 'Root launcher did not resolve package payload.' }
+
+          $directStatus = (& $internal --status --game $fixture --json | ConvertFrom-Json)
+          if (!$directStatus.ok) { throw "Direct app status failed: $($directStatus.error)" }
+          if (!$directStatus.result.PayloadPresent) { throw 'Direct app did not resolve parent package payload.' }
+
+          $install = (& $launcher --install --game $fixture --json | ConvertFrom-Json)
+          if (!$install.ok) { throw "Install smoke test failed: $($install.error)" }
+          if (!(Test-Path -LiteralPath (Join-Path $fixture 'red4ext\plugins\G-REDscript-Profiler.dll') -PathType Leaf)) {
+            throw 'Install smoke test did not deploy profiler DLL.'
+          }
+          if (!(Test-Path -LiteralPath (Join-Path $fixture 'red4ext\plugins\G-REDscript-Profiler\CaptureTitle.txt') -PathType Leaf)) {
+            throw 'Install smoke test did not deploy CaptureTitle.txt.'
+          }
+
+          $restore = (& $launcher --restore --game $fixture --json | ConvertFrom-Json)
+          if (!$restore.ok) { throw "Restore smoke test failed: $($restore.error)" }
+          if (Test-Path -LiteralPath (Join-Path $fixture 'red4ext\plugins\G-REDscript-Profiler.dll') -PathType Leaf) {
+            throw 'Restore smoke test left profiler DLL installed.'
+          }
+
+          Write-Host 'Launcher/package-root/install/restore smoke test passed.'
+
+      - name: Stage portable release ZIP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
           $portableRoot = 'portable'
           $productRoot = Join-Path $portableRoot 'G-REDscript-Profiler'
-
           if (Test-Path $portableRoot) {
             Remove-Item $portableRoot -Recurse -Force
           }
 
           New-Item -ItemType Directory -Force $productRoot | Out-Null
-          New-Item -ItemType Directory -Force (Join-Path $productRoot 'payload') | Out-Null
-          New-Item -ItemType Directory -Force (Join-Path $productRoot 'RESULTS') | Out-Null
-          New-Item -ItemType Directory -Force (Join-Path $productRoot 'docs') | Out-Null
-
-          Copy-Item manager-publish\G-REDscript-Profiler.exe (Join-Path $productRoot 'G-REDscript-Profiler.exe')
-          Copy-Item target\release\g_redscript_profiler.dll (Join-Path $productRoot 'payload\G-REDscript-Profiler.dll')
-          Copy-Item CaptureTitle.txt (Join-Path $productRoot 'payload\CaptureTitle.txt')
-
-          Copy-Item README.md (Join-Path $productRoot 'README.md')
-          Copy-Item CHANGELOG.md (Join-Path $productRoot 'CHANGELOG.md')
-          Copy-Item MANIFEST.json (Join-Path $productRoot 'MANIFEST.json')
-          Copy-Item PUBLIC_RELEASE_NOTES.md (Join-Path $productRoot 'RELEASE_NOTES.md')
-
-          Copy-Item FRAMEWORK_AUTHOR_GUIDE.md (Join-Path $productRoot 'docs\FRAMEWORK_AUTHOR_GUIDE.md')
-          Copy-Item OUTPUT_SCHEMA.md (Join-Path $productRoot 'docs\OUTPUT_SCHEMA.md')
-          Copy-Item docs\TOTAL_INTEGRATION_CONTRACT.md (Join-Path $productRoot 'docs\TOTAL_INTEGRATION_CONTRACT.md')
-          Copy-Item THIRD_PARTY_NOTICE.txt (Join-Path $productRoot 'docs\THIRD_PARTY_NOTICE.txt')
-
-          if (!(Test-Path (Join-Path $productRoot 'G-REDscript-Profiler.exe'))) { throw 'Portable manager EXE missing.' }
-          if (!(Test-Path (Join-Path $productRoot 'payload\G-REDscript-Profiler.dll'))) { throw 'Portable DLL payload missing.' }
-          if (!(Test-Path (Join-Path $productRoot 'payload\CaptureTitle.txt'))) { throw 'Portable CaptureTitle seed missing.' }
-          if (!(Test-Path (Join-Path $productRoot 'RESULTS') -PathType Container)) { throw 'Portable RESULTS directory missing.' }
+          Copy-Item publish\* $productRoot -Recurse -Force
 
           $asset = "G-REDscript-Profiler-v$env:PRODUCT_VERSION.zip"
-          if (Test-Path $asset) { Remove-Item $asset -Force }
-          Compress-Archive -Path $productRoot -DestinationPath $asset -CompressionLevel Optimal
+          if (Test-Path $asset) {
+            Remove-Item $asset -Force
+          }
 
+          Compress-Archive -Path $productRoot -DestinationPath $asset -CompressionLevel Optimal
           $hash = (Get-FileHash -LiteralPath $asset -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $asset" | Set-Content -Encoding ASCII "$asset.sha256.txt"
 
@@ -134,6 +329,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: G-REDscript-Profiler-v${{ steps.product_version.outputs.version }}
-          path: |
-            G-REDscript-Profiler-v${{ steps.product_version.outputs.version }}.zip
-            G-REDscript-Profiler-v${{ steps.product_version.outputs.version }}.zip.sha256.txt
+          path: portable/
+          if-no-files-found: error
