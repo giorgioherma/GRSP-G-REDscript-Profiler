@@ -13,7 +13,7 @@ internal sealed class AppSettings
     public string LastCollectedExternalFingerprint { get; set; } = "";
 
     private static string SettingsPath =>
-        Path.Combine(AppContext.BaseDirectory, "G-REDscript-Profiler.settings.json");
+        Path.Combine(PackagePaths.PackageRoot, "G-REDscript-Profiler.settings.json");
 
     public static AppSettings Load()
     {
