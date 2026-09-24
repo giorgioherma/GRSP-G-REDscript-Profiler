@@ -76,13 +76,17 @@
   "packages": {
     "game_root": "manual game-root payload",
     "standalone": {
-      "manager": "G-REDscript-Profiler.exe",
+      "launcher": "G-REDscript-Profiler.exe",
+      "app_dir": "app",
+      "app_executable": "app/G-REDscript-Profiler.App.exe",
       "manager_runtime": ".NET 8 self-contained win-x64",
       "payload_dir": "payload",
       "capture_engine": "payload/G-REDscript-Profiler.dll",
       "capture_title_seed": "payload/CaptureTitle.txt",
       "results_dir": "RESULTS",
-      "headless_json": "compact one-line JSON",
+      "docs_dir": "docs",
+      "settings": "G-REDscript-Profiler.settings.json at package root",
+      "headless_json": "compact one-line JSON through the root launcher or internal app",
       "headless_game_arg": "--game"
     }
   },
@@ -99,5 +103,11 @@
     "total_specific_profiler_variant": false,
     "orchestration_and_correlation_belong_to_total": true
   },
-  "release_channel": "stable"
+  "release_channel": "stable",
+  "manager_ui": {
+    "visual_contract": "matches frozen G-CET v1.0.0 dark cyan/magenta shell wherever REDscript lifecycle permits",
+    "status_contract": "white prose; green/yellow/red semantic markers only",
+    "action_contract": "disabled gray; enabled forward actions cyan; enabled restore magenta",
+    "dialogs": "dark themed dialogs retaining standard Windows information/warning/error/question icons"
+  }
 }
