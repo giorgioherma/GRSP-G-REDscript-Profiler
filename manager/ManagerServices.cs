@@ -20,10 +20,11 @@ internal static class ManagerServices
         PropertyNameCaseInsensitive = true
     };
 
-    public static string PayloadDirectory => Path.Combine(AppContext.BaseDirectory, "payload");
+    public static string PackageRoot => PackagePaths.PackageRoot;
+    public static string PayloadDirectory => Path.Combine(PackageRoot, "payload");
     public static string PayloadDll => Path.Combine(PayloadDirectory, PluginFileName);
     public static string PayloadCaptureTitle => Path.Combine(PayloadDirectory, CaptureTitleFileName);
-    public static string ArchiveResultsDirectory => Path.Combine(AppContext.BaseDirectory, "RESULTS");
+    public static string ArchiveResultsDirectory => Path.Combine(PackageRoot, "RESULTS");
 
     public static bool IsGameRunning()
     {
