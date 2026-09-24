@@ -6,6 +6,23 @@ internal sealed class MainForm : Form
 {
     private readonly AppSettings appSettings = AppSettings.Load();
 
+    // Match the frozen G-CET v1.0.0 visual language exactly where the
+    // REDscript lifecycle permits it.
+    private static readonly Color ThemeBg = Color.FromArgb(8, 13, 18);
+    private static readonly Color ThemePanel = Color.FromArgb(14, 23, 31);
+    private static readonly Color ThemePanelAlt = Color.FromArgb(11, 18, 25);
+    private static readonly Color ThemeBorder = Color.FromArgb(40, 71, 82);
+    private static readonly Color ThemeText = Color.FromArgb(232, 243, 246);
+    private static readonly Color ThemeMuted = Color.FromArgb(172, 188, 197);
+    private static readonly Color ThemeInactive = Color.FromArgb(104, 118, 126);
+    private static readonly Color ThemeDisabledSurface = Color.FromArgb(18, 25, 31);
+    private static readonly Color ThemeDisabledBorder = Color.FromArgb(49, 61, 68);
+    private static readonly Color ThemeCyan = Color.FromArgb(54, 244, 244);
+    private static readonly Color ThemeMagenta = Color.FromArgb(255, 63, 215);
+    private static readonly Color ThemeGreen = Color.FromArgb(94, 255, 130);
+    private static readonly Color ThemeAmber = Color.FromArgb(255, 216, 64);
+    private static readonly Color ThemeRed = Color.FromArgb(255, 82, 100);
+
     private readonly Panel setupPage = new();
     private readonly Panel profilerPage = new();
 
@@ -21,11 +38,12 @@ internal sealed class MainForm : Form
     private readonly Label companionStatus = new();
     private readonly LinkLabel capFrameXLink = new();
 
-    private readonly Label status = new();
+    private readonly RichTextBox status = new();
     private readonly Label managedFiles = new();
     private readonly GroupBox readyGroup = new();
     private readonly Label readyHeading = new();
-    private readonly Label readyInstructions = new();
+    private readonly Label readyInstallInstruction = new();
+    private readonly Label readyCaptureInstructions = new();
     private readonly TextBox captureTitle = new();
     private readonly Button saveCaptureTitle = new();
 
@@ -45,16 +63,29 @@ internal sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = $"G-REDscript Profiler - {ManagerServices.ProductVersion}";
+        Text = $"G-REDscript Profiler - v{ManagerServices.ProductVersion}";
+        try
+        {
+            var executableIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            if (executableIcon is not null)
+                Icon = executableIcon;
+        }
+        catch
+        {
+            // Cosmetic only.
+        }
         StartPosition = FormStartPosition.CenterScreen;
         ClientSize = new Size(860, 735);
         MinimumSize = new Size(880, 775);
         Font = new Font("Segoe UI", 9F);
+        BackColor = ThemeBg;
+        ForeColor = ThemeText;
 
         BuildSetupPage();
         BuildProfilerPage();
         Controls.Add(profilerPage);
         Controls.Add(setupPage);
+        ApplyTheme();
 
         gameRoot.Text = appSettings.GameRoot;
         captureTitle.Text = string.IsNullOrWhiteSpace(appSettings.CaptureTitle)
@@ -71,6 +102,7 @@ internal sealed class MainForm : Form
 
         Shown += async (_, _) =>
         {
+            ThemedDialog.ApplyDarkTitleBar(this);
             await RefreshStatusAsync(silent: true);
             RefreshCompanionStatus();
         };
@@ -90,17 +122,18 @@ internal sealed class MainForm : Form
     {
         setupPage.Dock = DockStyle.Fill;
 
+        var logo = CreateHeaderLogo(new Point(20, 5));
         var title = new Label
         {
             Text = "SETUP",
             Font = new Font("Segoe UI Semibold", 18F),
             AutoSize = true,
-            Location = new Point(20, 18)
+            ForeColor = ThemeCyan,
+            Location = new Point(84, 18)
         };
-
         var subtitle = new Label
         {
-            Text = "Select Cyberpunk 2077. RED4ext is required.",
+            Text = "Select Cyberpunk 2077. RED4ext is required; frame-time pairing is optional.",
             AutoSize = true,
             ForeColor = SystemColors.GrayText,
             Location = new Point(22, 55)
@@ -108,10 +141,10 @@ internal sealed class MainForm : Form
 
         var gameGroup = new GroupBox { Text = "Cyberpunk 2077" };
         gameGroup.SetBounds(20, 88, 820, 92);
-
         gameRoot.SetBounds(18, 30, 680, 26);
         gameRoot.TextChanged += async (_, _) =>
         {
+            ClearRestoreOutcome();
             if (!loadingSettings)
                 SaveSettingsFromUi();
             await RefreshStatusAsync(silent: true);
@@ -127,8 +160,7 @@ internal sealed class MainForm : Form
                 Description = "Select the Cyberpunk 2077 game folder",
                 SelectedPath = Directory.Exists(gameRoot.Text) ? gameRoot.Text : ""
             };
-            if (dialog.ShowDialog(this) != DialogResult.OK)
-                return;
+            if (dialog.ShowDialog(this) != DialogResult.OK) return;
 
             gameRoot.Text = dialog.SelectedPath;
             await RefreshStatusAsync(silent: true);
@@ -146,34 +178,28 @@ internal sealed class MainForm : Form
         pairFrameTime.SetBounds(18, 28, 300, 24);
         pairFrameTime.CheckedChanged += (_, _) =>
         {
-            if (loadingSettings)
-                return;
+            if (loadingSettings) return;
             UpdateCompanionControls();
             RefreshCompanionStatus();
             SaveSettingsFromUi();
             SetActionState(lastStatus);
-            RenderStatus(lastStatus);
+            if (lastStatus is not null)
+                RenderStatus(lastStatus);
             RenderReadyState(lastStatus);
         };
 
         var explanation = new Label
         {
-            Text = "Pairing GRSP with a frame-time capture tool lets you see whether REDscript activity lines up with actual frame-time spikes or sustained frame-time cost. For synchronized captures, start both tools with F11 before the section you want to measure, then press F11 again to stop the capture.",
+            Text = "G-REDscript Profiler works standalone. Pairing it with a frame-time capture lets you compare REDscript activity with actual frame-time behavior. This build was designed and tested alongside CapFrameX 1.9.1.2 Beta, but you can use a profiler you already have.",
             MaximumSize = new Size(770, 0),
             AutoSize = true,
+            ForeColor = ThemeText,
             Location = new Point(18, 62)
         };
 
-        var recommendation = new Label
-        {
-            Text = "Any frame-time capture tool can work with G-REDscript Profiler, but it was developed and tested with",
-            AutoSize = true,
-            Location = new Point(18, 118)
-        };
-
-        capFrameXLink.Text = "CapFrameX 1.9.1.2 Beta";
+        capFrameXLink.Text = "CapFrameX releases";
         capFrameXLink.AutoSize = true;
-        capFrameXLink.Location = new Point(18, 140);
+        capFrameXLink.Location = new Point(18, 118);
         capFrameXLink.LinkClicked += (_, _) =>
         {
             try
@@ -185,30 +211,39 @@ internal sealed class MainForm : Form
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                ThemedDialog.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        };
+
+        var syncHint = new Label
+        {
+            Text = "For synchronized captures, use the same START key. G-REDscript Profiler uses F11.",
+            AutoSize = true,
+            ForeColor = ThemeText,
+            Location = new Point(150, 118)
         };
 
         var exeLabel = new Label
         {
             Text = "Profiler executable",
             AutoSize = true,
-            Location = new Point(18, 176)
+            ForeColor = ThemeText,
+            Location = new Point(18, 158)
         };
-        companionExe.SetBounds(18, 198, 680, 26);
+        companionExe.SetBounds(18, 180, 680, 26);
         companionExe.TextChanged += (_, _) =>
         {
-            if (loadingSettings)
-                return;
+            if (loadingSettings) return;
             RefreshCompanionStatus();
             SetActionState(lastStatus);
             SaveSettingsFromUi();
-            RenderStatus(lastStatus);
+            if (lastStatus is not null)
+                RenderStatus(lastStatus);
             RenderReadyState(lastStatus);
         };
 
         browseCompanionExe.Text = "Browse...";
-        browseCompanionExe.SetBounds(708, 196, 92, 30);
+        browseCompanionExe.SetBounds(708, 178, 92, 30);
         browseCompanionExe.Click += (_, _) =>
         {
             using var dialog = new OpenFileDialog
@@ -217,16 +252,13 @@ internal sealed class MainForm : Form
                 Filter = "Executable (*.exe)|*.exe|All files (*.*)|*.*",
                 CheckFileExists = true
             };
-            if (dialog.ShowDialog(this) != DialogResult.OK)
-                return;
+            if (dialog.ShowDialog(this) != DialogResult.OK) return;
 
             companionExe.Text = dialog.FileName;
             var suggested = CompanionProfilerService.SuggestResultsDirectory(dialog.FileName);
             if (!string.IsNullOrWhiteSpace(suggested) &&
                 (string.IsNullOrWhiteSpace(companionResults.Text) || !Directory.Exists(companionResults.Text)))
-            {
                 companionResults.Text = suggested;
-            }
 
             RefreshCompanionStatus();
         };
@@ -235,22 +267,23 @@ internal sealed class MainForm : Form
         {
             Text = "Capture / results folder",
             AutoSize = true,
-            Location = new Point(18, 236)
+            ForeColor = ThemeText,
+            Location = new Point(18, 218)
         };
-        companionResults.SetBounds(18, 258, 680, 26);
+        companionResults.SetBounds(18, 240, 680, 26);
         companionResults.TextChanged += (_, _) =>
         {
-            if (loadingSettings)
-                return;
+            if (loadingSettings) return;
             RefreshCompanionStatus();
             SaveSettingsFromUi();
             SetActionState(lastStatus);
-            RenderStatus(lastStatus);
+            if (lastStatus is not null)
+                RenderStatus(lastStatus);
             RenderReadyState(lastStatus);
         };
 
         browseCompanionResults.Text = "Browse...";
-        browseCompanionResults.SetBounds(708, 256, 92, 30);
+        browseCompanionResults.SetBounds(708, 238, 92, 30);
         browseCompanionResults.Click += (_, _) =>
         {
             using var dialog = new FolderBrowserDialog
@@ -258,19 +291,19 @@ internal sealed class MainForm : Form
                 Description = "Select the frame-time profiler capture/results folder",
                 SelectedPath = Directory.Exists(companionResults.Text) ? companionResults.Text : ""
             };
-            if (dialog.ShowDialog(this) != DialogResult.OK)
-                return;
+            if (dialog.ShowDialog(this) != DialogResult.OK) return;
 
             companionResults.Text = dialog.SelectedPath;
             RefreshCompanionStatus();
+            SetActionState(lastStatus);
             SaveSettingsFromUi();
         };
 
-        companionStatus.SetBounds(18, 300, 780, 62);
+        companionStatus.SetBounds(18, 282, 780, 62);
         companionStatus.Font = new Font("Consolas", 9.5F);
 
         companionGroup.Controls.AddRange([
-            pairFrameTime, explanation, recommendation, capFrameXLink,
+            pairFrameTime, explanation, capFrameXLink, syncHint,
             exeLabel, companionExe, browseCompanionExe,
             resultsLabel, companionResults, browseCompanionResults,
             companionStatus
@@ -292,19 +325,22 @@ internal sealed class MainForm : Form
                 ShowPage(1);
         };
 
-        setupPage.Controls.AddRange([title, subtitle, gameGroup, companionGroup, next]);
+        setupPage.Controls.AddRange([logo, title, subtitle, gameGroup, companionGroup, next]);
+        AddHeaderAccent(setupPage, 74);
     }
 
     private void BuildProfilerPage()
     {
         profilerPage.Dock = DockStyle.Fill;
 
+        var logo = CreateHeaderLogo(new Point(20, 5));
         var title = new Label
         {
-            Text = "INSTALL, CAPTURE & RECOVERY",
+            Text = "INSTALL -> CAPTURE -> RESTORE",
             Font = new Font("Segoe UI Semibold", 18F),
             AutoSize = true,
-            Location = new Point(20, 18)
+            ForeColor = ThemeCyan,
+            Location = new Point(84, 18)
         };
 
         var back = new Button
@@ -325,6 +361,13 @@ internal sealed class MainForm : Form
         statusGroup.SetBounds(20, 66, 820, 250);
         status.SetBounds(18, 27, 775, 178);
         status.Font = new Font("Segoe UI", 9.5F);
+        status.ReadOnly = true;
+        status.BorderStyle = BorderStyle.None;
+        status.ScrollBars = RichTextBoxScrollBars.None;
+        status.DetectUrls = false;
+        status.TabStop = false;
+        status.BackColor = ThemePanelAlt;
+        status.ForeColor = ThemeText;
 
         refresh.Text = "REFRESH";
         refresh.SetBounds(694, 210, 100, 28);
@@ -338,6 +381,7 @@ internal sealed class MainForm : Form
         {
             Text = "Capture title",
             AutoSize = true,
+            ForeColor = ThemeText,
             Location = new Point(18, 28)
         };
         captureTitle.SetBounds(110, 24, 420, 26);
@@ -356,6 +400,7 @@ internal sealed class MainForm : Form
             Text = "The title is read when capture starts and becomes part of the capture folder name.\r\nF11 #1 = START   ·   F11 #2 = STOP + EXPORT   ·   closing the game while recording also exports what was captured.",
             MaximumSize = new Size(775, 0),
             AutoSize = true,
+            ForeColor = ThemeText,
             Location = new Point(18, 62)
         };
         captureGroup.Controls.AddRange([captureLabel, captureTitle, saveCaptureTitle, captureHint]);
@@ -363,19 +408,25 @@ internal sealed class MainForm : Form
         readyGroup.Text = "";
         readyGroup.SetBounds(20, 448, 820, 138);
 
-        readyHeading.SetBounds(18, 16, 775, 28);
+        readyHeading.SetBounds(18, 16, 775, 26);
         readyHeading.Font = new Font("Segoe UI Semibold", 11F);
         readyHeading.AutoSize = false;
 
-        readyInstructions.SetBounds(18, 46, 775, 84);
-        readyInstructions.Font = new Font("Segoe UI", 9.5F);
-        readyInstructions.AutoSize = false;
-        readyInstructions.Text =
-            "1. Run your Frame-time Capture Tool if you're using one and enter the game.\r\n" +
-            "2. To start measurement press your shared keybind (F11). To stop capture and prep the results press the same key again (F11).\r\n" +
-            "3. Return to installer and COLLECT RESULTS.\r\n" +
-            "4. After usage RESTORE ORIGINAL STATE to finish.";
-        readyGroup.Controls.AddRange([readyHeading, readyInstructions]);
+        readyInstallInstruction.SetBounds(18, 44, 775, 20);
+        readyInstallInstruction.Font = new Font("Segoe UI", 9.5F);
+        readyInstallInstruction.AutoSize = false;
+        readyInstallInstruction.Text = "1. Install G-REDscript Profiler and save a capture title.";
+
+        readyCaptureInstructions.SetBounds(18, 64, 775, 64);
+        readyCaptureInstructions.Font = new Font("Segoe UI", 9.5F);
+        readyCaptureInstructions.AutoSize = false;
+        readyCaptureInstructions.Text =
+            "2. Run your Frame-time Capture Tool if you're using one and enter the game.\r\n" +
+            "3. To start measurement press F11. To stop capture and prep the results press F11 again.\r\n" +
+            "4. Return to installer and COLLECT RESULTS.\r\n" +
+            "5. After usage RESTORE ORIGINAL STATE to finish.";
+
+        readyGroup.Controls.AddRange([readyHeading, readyInstallInstruction, readyCaptureInstructions]);
 
         install.Text = "INSTALL PROFILER";
         install.SetBounds(20, 598, 230, 42);
@@ -389,14 +440,13 @@ internal sealed class MainForm : Form
         restore.SetBounds(580, 598, 260, 42);
         restore.Click += async (_, _) =>
         {
-            if (busy)
-                return;
+            if (busy) return;
 
             DialogResult answer;
             suppressActivationRefresh = true;
             try
             {
-                answer = MessageBox.Show(
+                answer = ThemedDialog.Show(
                     this,
                     "All files will be returned to their original state.",
                     Text,
@@ -430,9 +480,10 @@ internal sealed class MainForm : Form
         restoreOutcome.Visible = false;
 
         profilerPage.Controls.AddRange([
-            title, back, statusGroup, captureGroup, readyGroup,
+            logo, title, back, statusGroup, captureGroup, readyGroup,
             install, collect, restore, openResults, startCompanion, startGame, restoreOutcome
         ]);
+        AddHeaderAccent(profilerPage, 59);
     }
 
     private void ShowPage(int page)
@@ -469,6 +520,7 @@ internal sealed class MainForm : Form
                 "REDscript Profiler: unavailable ❌\r\n" +
                 "G-REDscript PROFILER IS NOT INSTALLED. ❌\r\n" +
                 "Live Files: -";
+            ColorizeStatusText();
             RenderSetupGameStatus();
             RenderManagedFiles(null);
             RenderReadyState(null);
@@ -501,13 +553,14 @@ internal sealed class MainForm : Form
             lastStatus = null;
             SetBusy(false);
             status.Text = "STATUS ERROR:\r\n" + ex.Message;
+            ColorizeStatusText();
             RenderSetupGameStatus();
             RenderManagedFiles(null);
             RenderReadyState(null);
             SetActionState(null);
 
             if (!silent)
-                MessageBox.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                ThemedDialog.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -516,18 +569,25 @@ internal sealed class MainForm : Form
         if (!LooksLikeGameRoot(gameRoot.Text.Trim()))
         {
             setupGameStatus.Text = "Game: NOT FOUND";
+            setupGameStatus.ForeColor = ThemeRed;
             return;
         }
 
         if (lastStatus is null)
         {
             setupGameStatus.Text = "Game: FOUND    RED4ext: checking...";
+            setupGameStatus.ForeColor = ThemeAmber;
             return;
         }
 
         setupGameStatus.Text =
             $"Game: {(lastStatus.GameRootValid ? "FOUND" : "NOT FOUND")}    " +
             $"RED4ext: {(lastStatus.Red4extPresent ? "FOUND" : "NOT FOUND")}";
+
+        setupGameStatus.ForeColor =
+            lastStatus.GameRootValid && lastStatus.Red4extPresent
+                ? ThemeGreen
+                : ThemeRed;
     }
 
     private void RenderStatus(StatusInfo? snapshot)
@@ -535,6 +595,7 @@ internal sealed class MainForm : Form
         if (snapshot is null)
         {
             status.Text = "Select a valid Cyberpunk 2077 folder.";
+            ColorizeStatusText();
             SetActionState(null);
             return;
         }
@@ -603,8 +664,46 @@ internal sealed class MainForm : Form
             syncLines + "\r\n\r\n" +
             $"G-REDscript PROFILER IS {installState}\r\n" +
             $"Live Files: {snapshot.CompletedCaptureCount}";
-        
+
+        ColorizeStatusText();
         SetActionState(snapshot);
+    }
+
+    private void ColorizeStatusText()
+    {
+        status.SuspendLayout();
+        try
+        {
+            status.SelectAll();
+            status.SelectionColor = ThemeText;
+
+            ColorStatusMarkers("✅", ThemeGreen);
+            ColorStatusMarkers("❌", ThemeRed);
+            ColorStatusMarkers("⚠️", ThemeAmber);
+            ColorStatusMarkers("⚠", ThemeAmber);
+
+            status.Select(0, 0);
+            status.SelectionLength = 0;
+        }
+        finally
+        {
+            status.ResumeLayout();
+        }
+    }
+
+    private void ColorStatusMarkers(string marker, Color color)
+    {
+        var searchFrom = 0;
+        while (searchFrom < status.TextLength)
+        {
+            var index = status.Text.IndexOf(marker, searchFrom, StringComparison.Ordinal);
+            if (index < 0)
+                break;
+
+            status.Select(index, marker.Length);
+            status.SelectionColor = color;
+            searchFrom = index + marker.Length;
+        }
     }
 
     private bool IsProfilerReady(StatusInfo? snapshot) =>
@@ -636,12 +735,20 @@ internal sealed class MainForm : Form
     {
         var ready = IsProfilerReady(snapshot);
         var blocked = HasCriticalProfilerError(snapshot);
+        var installed = snapshot?.State is "INSTALLED_CURRENT" or "PREEXISTING_CURRENT";
 
-        readyHeading.Text = ready ? "PROFILER IS READY!" : "PROFILER IS NOT READY!";
+        readyHeading.Text = ready
+            ? "PROFILER IS READY!"
+            : "PROFILER IS NOT READY!";
+
         readyHeading.ForeColor = ready
-            ? Color.ForestGreen
-            : blocked ? Color.Firebrick : Color.DarkGoldenrod;
-        readyInstructions.Enabled = ready;
+            ? ThemeGreen
+            : blocked ? ThemeRed : ThemeAmber;
+
+        readyInstallInstruction.Enabled = true;
+        readyCaptureInstructions.Enabled = true;
+        readyInstallInstruction.ForeColor = installed ? ThemeInactive : ThemeCyan;
+        readyCaptureInstructions.ForeColor = ready ? ThemeText : ThemeInactive;
     }
 
     private void RenderManagedFiles(StatusInfo? snapshot)
@@ -687,6 +794,8 @@ internal sealed class MainForm : Form
 
     private void SetActionState(StatusInfo? snapshot)
     {
+        openResults.Enabled = !busy;
+
         if (snapshot is null)
         {
             install.Enabled = false;
@@ -729,7 +838,7 @@ internal sealed class MainForm : Form
             if (!string.IsNullOrWhiteSpace(captureTitle.Text))
                 await Task.Run(() => ManagerServices.SaveCaptureTitle(gameRoot.Text.Trim(), captureTitle.Text));
 
-            MessageBox.Show(
+            ThemedDialog.Show(
                 this,
                 "G-REDscript Profiler installed.\r\n\r\n" +
                 "F11 #1 = START\r\n" +
@@ -741,7 +850,7 @@ internal sealed class MainForm : Form
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            ThemedDialog.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
         {
@@ -765,7 +874,7 @@ internal sealed class MainForm : Form
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            ThemedDialog.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
         {
@@ -812,7 +921,7 @@ internal sealed class MainForm : Form
                     ? "Frame-time companion: GRSP collection succeeded, but companion copy failed: " + companionError
                     : "Frame-time companion: " + (companion?.Message ?? "not collected.");
 
-            MessageBox.Show(
+            ThemedDialog.Show(
                 this,
                 "GRSP results archived successfully and live profiler output was cleared.\r\n\r\n" +
                 "Archive folder:\r\n" + destination + "\r\n\r\n" +
@@ -823,7 +932,7 @@ internal sealed class MainForm : Form
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            ThemedDialog.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
         {
@@ -851,12 +960,12 @@ internal sealed class MainForm : Form
 
             lastStatus = verified;
             ShowRestoreOutcome(true, "RESTORE SUCCESSFUL — files returned to their original state.");
-            MessageBox.Show(this, "All files have been returned to their original state.", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            ThemedDialog.Show(this, "All files have been returned to their original state.", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {
             ShowRestoreOutcome(false, "RESTORE NOT COMPLETED — managed state was preserved where needed.");
-            MessageBox.Show(
+            ThemedDialog.Show(
                 this,
                 "Restore could not complete safely.\r\n\r\n" + ex.Message,
                 Text,
@@ -885,7 +994,7 @@ internal sealed class MainForm : Form
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            ThemedDialog.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -894,7 +1003,7 @@ internal sealed class MainForm : Form
         var exe = companionExe.Text.Trim();
         if (!File.Exists(exe))
         {
-            MessageBox.Show(this, "The configured frame-time profiler executable was not found.", Text,
+            ThemedDialog.Show(this, "The configured frame-time profiler executable was not found.", Text,
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
@@ -909,7 +1018,7 @@ internal sealed class MainForm : Form
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            ThemedDialog.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -925,7 +1034,7 @@ internal sealed class MainForm : Form
     private void ShowRestoreProgress(string message)
     {
         restoreOutcome.Text = "… " + message;
-        restoreOutcome.ForeColor = SystemColors.ControlText;
+        restoreOutcome.ForeColor = ThemeText;
         restoreOutcome.Visible = true;
         restoreOutcome.BringToFront();
     }
@@ -933,7 +1042,7 @@ internal sealed class MainForm : Form
     private void ShowRestoreOutcome(bool success, string message)
     {
         restoreOutcome.Text = (success ? "✓ " : "✗ ") + message;
-        restoreOutcome.ForeColor = success ? Color.ForestGreen : Color.Firebrick;
+        restoreOutcome.ForeColor = success ? ThemeGreen : ThemeRed;
         restoreOutcome.Visible = true;
         restoreOutcome.BringToFront();
     }
@@ -975,6 +1084,190 @@ internal sealed class MainForm : Form
 
         SyncSettingsFromUi();
         appSettings.Save();
+    }
+
+    private void ApplyTheme()
+    {
+        ApplyThemeRecursive(this);
+
+        setupPage.BackColor = ThemeBg;
+        profilerPage.BackColor = ThemeBg;
+
+        AccentButton(install, ThemeCyan);
+        AccentButton(collect, ThemeCyan);
+        AccentButton(openResults, ThemeCyan);
+        AccentButton(startGame, ThemeCyan);
+        AccentButton(startCompanion, ThemeCyan);
+        AccentButton(saveCaptureTitle, ThemeCyan);
+        AccentButton(restore, ThemeMagenta);
+
+        readyGroup.BackColor = ThemePanelAlt;
+        readyHeading.ForeColor = ThemeAmber;
+        status.ForeColor = ThemeText;
+        companionStatus.ForeColor = ThemeText;
+
+        capFrameXLink.LinkColor = ThemeCyan;
+        capFrameXLink.ActiveLinkColor = ThemeMagenta;
+        capFrameXLink.VisitedLinkColor = ThemeCyan;
+    }
+
+    private static void ApplyThemeRecursive(Control root)
+    {
+        foreach (Control control in root.Controls)
+        {
+            switch (control)
+            {
+                case Panel panel:
+                    panel.BackColor = (panel.Tag as string) switch
+                    {
+                        "grsp-accent-cyan" => ThemeBorder,
+                        "grsp-accent-magenta" => ThemeMagenta,
+                        _ => ThemeBg
+                    };
+                    panel.ForeColor = ThemeText;
+                    break;
+
+                case GroupBox group:
+                    group.BackColor = ThemePanelAlt;
+                    group.ForeColor = ThemeCyan;
+                    group.FlatStyle = FlatStyle.Flat;
+                    break;
+
+                case RichTextBox richTextBox:
+                    richTextBox.BackColor = ThemePanelAlt;
+                    richTextBox.ForeColor = ThemeText;
+                    richTextBox.BorderStyle = BorderStyle.None;
+                    break;
+
+                case TextBox textBox:
+                    textBox.BackColor = ThemePanel;
+                    textBox.ForeColor = ThemeText;
+                    textBox.BorderStyle = BorderStyle.FixedSingle;
+                    break;
+
+                case Button button:
+                    button.UseVisualStyleBackColor = false;
+                    button.BackColor = ThemePanel;
+                    button.ForeColor = ThemeText;
+                    button.FlatStyle = FlatStyle.Flat;
+                    button.FlatAppearance.BorderSize = 1;
+                    button.FlatAppearance.BorderColor = ThemeBorder;
+                    button.FlatAppearance.MouseOverBackColor = Color.FromArgb(19, 35, 44);
+                    button.FlatAppearance.MouseDownBackColor = Color.FromArgb(23, 43, 53);
+                    break;
+
+                case CheckBox checkBox:
+                    checkBox.BackColor = Color.Transparent;
+                    checkBox.ForeColor = ThemeText;
+                    break;
+
+                case LinkLabel link:
+                    link.BackColor = Color.Transparent;
+                    link.ForeColor = ThemeCyan;
+                    link.LinkColor = ThemeCyan;
+                    link.ActiveLinkColor = ThemeMagenta;
+                    break;
+
+                case Label label:
+                    label.BackColor = Color.Transparent;
+                    if (label.ForeColor == SystemColors.GrayText)
+                        label.ForeColor = ThemeMuted;
+                    else if (label.ForeColor == SystemColors.ControlText ||
+                             label.ForeColor == SystemColors.WindowText ||
+                             label.ForeColor == Color.Black)
+                        label.ForeColor = label.Font.Size >= 16F ? ThemeCyan : ThemeText;
+                    break;
+            }
+
+            if (control.HasChildren)
+                ApplyThemeRecursive(control);
+        }
+    }
+
+    private static void AccentButton(Button button, Color accent)
+    {
+        button.ForeColor = accent;
+        button.FlatAppearance.BorderColor = accent;
+        button.Paint += (_, e) =>
+        {
+            if (button.Enabled)
+                return;
+
+            e.Graphics.Clear(ThemeDisabledSurface);
+            using var border = new Pen(ThemeDisabledBorder);
+            e.Graphics.DrawRectangle(border, 0, 0, Math.Max(0, button.Width - 1), Math.Max(0, button.Height - 1));
+            TextRenderer.DrawText(
+                e.Graphics,
+                button.Text,
+                button.Font,
+                button.ClientRectangle,
+                ThemeInactive,
+                TextFormatFlags.HorizontalCenter |
+                TextFormatFlags.VerticalCenter |
+                TextFormatFlags.SingleLine |
+                TextFormatFlags.EndEllipsis);
+        };
+    }
+
+    private static Control CreateHeaderLogo(Point location)
+    {
+        var logo = new Panel
+        {
+            Location = location,
+            Size = new Size(52, 52),
+            BackColor = Color.Transparent,
+            TabStop = false
+        };
+
+        logo.Paint += (_, e) =>
+        {
+            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            using var cyanPen = new Pen(ThemeCyan, 1.5F);
+            using var magentaPen = new Pen(ThemeMagenta, 1.5F);
+            e.Graphics.DrawRectangle(cyanPen, 2, 2, 47, 47);
+            e.Graphics.DrawLine(magentaPen, 8, 45, 44, 45);
+
+            using var mainFont = new Font("Segoe UI Semibold", 12.5F, FontStyle.Bold);
+            using var subFont = new Font("Segoe UI Semibold", 6.5F, FontStyle.Bold);
+            TextRenderer.DrawText(
+                e.Graphics,
+                "G-R",
+                mainFont,
+                new Rectangle(4, 8, 44, 25),
+                ThemeText,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            TextRenderer.DrawText(
+                e.Graphics,
+                "SP",
+                subFont,
+                new Rectangle(4, 31, 44, 10),
+                ThemeMagenta,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+        };
+
+        return logo;
+    }
+
+    private static void AddHeaderAccent(Control page, int y)
+    {
+        var cyan = new Panel
+        {
+            Tag = "grsp-accent-cyan",
+            BackColor = ThemeBorder,
+            Location = new Point(20, y),
+            Size = new Size(820, 1)
+        };
+        var magenta = new Panel
+        {
+            Tag = "grsp-accent-magenta",
+            BackColor = ThemeMagenta,
+            Location = new Point(20, y + 1),
+            Size = new Size(92, 1)
+        };
+        page.Controls.Add(cyan);
+        page.Controls.Add(magenta);
+        cyan.SendToBack();
+        magenta.SendToBack();
     }
 
     private static bool LooksLikeGameRoot(string root) =>
