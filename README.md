@@ -13,14 +13,20 @@ G-REDscript-Profiler-v1.0.0.zip
 └─ G-REDscript-Profiler\
    ├─ G-REDscript-Profiler.exe
    ├─ MANIFEST.json
-   ├─ README.md
-   ├─ CHANGELOG.md
-   ├─ RELEASE_NOTES.md
+   ├─ VERSION.txt
+   ├─ app\
+   │  ├─ G-REDscript-Profiler.App.exe
+   │  ├─ G-REDscript-Profiler.App.deps.json
+   │  ├─ G-REDscript-Profiler.App.runtimeconfig.json
+   │  └─ .NET runtime files...
    ├─ payload\
    │  ├─ G-REDscript-Profiler.dll
    │  └─ CaptureTitle.txt
    ├─ RESULTS\
    └─ docs\
+      ├─ README.md
+      ├─ CHANGELOG.md
+      ├─ RELEASE_NOTES.md
       ├─ FRAMEWORK_AUTHOR_GUIDE.md
       ├─ OUTPUT_SCHEMA.md
       ├─ TOTAL_INTEGRATION_CONTRACT.md
@@ -29,7 +35,7 @@ G-REDscript-Profiler-v1.0.0.zip
 
 Extract the ZIP to a normal writable folder and run `G-REDscript-Profiler.exe`.
 
-The manager is self-contained. Settings are created beside the EXE in the extracted profiler folder rather than in Windows roaming/app-data folders.
+The root EXE is a small native launcher. The self-contained WinForms application and .NET runtime live under `app\`, matching the G-CET Runtime Profiler package layout. Settings remain package-local beside the root launcher rather than in Windows roaming/app-data folders.
 
 ## Requirements
 
@@ -66,7 +72,7 @@ The DLL sits beside the data folder at the same `red4ext\plugins` level.
 2. On **SETUP**, select the Cyberpunk 2077 folder.
 3. GRSP verifies the game and RED4ext.
 4. Optionally link a frame-time profiler executable and its capture/results folder.
-5. Continue to **INSTALL, CAPTURE & RECOVERY**.
+5. Continue to **INSTALL -> CAPTURE -> RESTORE**.
 6. Review the status list and use **INSTALL PROFILER**.
 7. Give the run a capture title.
 8. When the page reports **PROFILER IS READY!**, optionally launch the frame-time tool and then start Cyberpunk.
@@ -264,11 +270,13 @@ Native DLL:
 .\BUILD_WINDOWS.ps1
 ```
 
-Standalone manager:
+Standalone manager app:
 
 ```powershell
-dotnet publish manager\GRedscriptProfiler.Manager.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+dotnet publish manager\GRedscriptProfiler.Manager.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false
 ```
+
+The public package places that managed app/runtime under `app\` and uses the small native `G-REDscript-Profiler.exe` launcher at the package root.
 
 ## Technical basis / credit
 
