@@ -162,7 +162,7 @@ internal static partial class ResultReportService
             {
                 analysis.SyncQuality = best.Pearson >= 0.45 ? "COARSE" : "STATISTICS ONLY";
                 analysis.AlignmentMethod =
-                    $"Frame-duration sequence match was not unique enough for exact mapping (best lag {best.Lag:+#;-#;0}, Pearson {best.Pearson:0.###}, runner-up {(runnerUp?.Pearson ?? 0):0.###}).";
+                    $"Frame-duration sequence match was not unique enough for exact mapping (best fixed offset {best.Lag:+#;-#;0} frame(s), Pearson {best.Pearson:0.###}, runner-up {(runnerUp?.Pearson ?? 0):0.###}).";
                 return analysis;
             }
 
@@ -179,11 +179,16 @@ internal static partial class ResultReportService
             var mad = Median(offsets.Select(x => Math.Abs(x - medianOffset)).ToList());
             analysis.StartOffsetMedianMs = medianOffset;
             analysis.StartOffsetMadMs = mad;
+            analysis.AlignedFramePairs = lastCap - firstCap;
+            analysis.CapFrameXFramesBeforeOverlap = firstCap;
+            analysis.CapFrameXFramesAfterOverlap = count - lastCap;
+            analysis.GrspFramesBeforeOverlap = firstCap + best.Lag;
+            analysis.GrspFramesAfterOverlap = grspFrames.Count - (lastCap + best.Lag);
             analysis.ExactFrameAlignment = true;
             analysis.Correlated = true;
             analysis.SyncQuality = best.Pearson >= 0.65 && mad <= 8 ? "GOOD" : "GOOD";
             analysis.AlignmentMethod =
-                $"Direct frame-sequence alignment: CapFrameX frame i ≈ GRSP frame i{FormatLag(best.Lag)}; duration-sequence Pearson {best.Pearson:0.###}, log-Pearson {best.LogPearson:0.###}, start-offset MAD {mad:0.###} ms.";
+                $"Direct frame-sequence alignment with a fixed {best.Lag:+#;-#;0}-frame offset: CapFrameX frame i ≈ GRSP frame i{FormatLag(best.Lag)}. This is an alignment offset, not a per-frame drift measurement. Duration-sequence Pearson {best.Pearson:0.###}, log-Pearson {best.LogPearson:0.###}, offset MAD {mad:0.###} ms.";
 
             var spikeByFrame = spikes
                 .GroupBy(x => x.FrameId)
@@ -470,6 +475,11 @@ internal static partial class ResultReportService
         public double RunnerUpPearson { get; set; }
         public double StartOffsetMedianMs { get; set; }
         public double StartOffsetMadMs { get; set; }
+        public int AlignedFramePairs { get; set; }
+        public int CapFrameXFramesBeforeOverlap { get; set; }
+        public int CapFrameXFramesAfterOverlap { get; set; }
+        public int GrspFramesBeforeOverlap { get; set; }
+        public int GrspFramesAfterOverlap { get; set; }
         public double HighScriptThresholdMs { get; set; }
         public int SlowFrames { get; set; }
         public int SlowFramesHighScript { get; set; }
