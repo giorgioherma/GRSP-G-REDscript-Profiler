@@ -891,6 +891,7 @@ internal sealed class MainForm : Form
 
             CompanionCollectResult? companion = null;
             string? companionError = null;
+            string? reportError = null;
 
             if (HasConfiguredCompanion())
             {
@@ -905,8 +906,26 @@ internal sealed class MainForm : Form
                 }
             }
 
+            // Rebuild the same human-first report after the optional companion
+            // copy so CapFrameX can become an evidence layer without changing
+            // the native REDscript measurement.
             if (Directory.Exists(destination))
-                Process.Start(new ProcessStartInfo(destination) { UseShellExecute = true });
+            {
+                try
+                {
+                    await Task.Run(() => ResultReportService.Generate(destination));
+                }
+                catch (Exception ex)
+                {
+                    reportError = ex.Message;
+                }
+
+                var report = Path.Combine(destination, ResultReportService.ReportFileName);
+                Process.Start(new ProcessStartInfo(File.Exists(report) ? report : destination)
+                {
+                    UseShellExecute = true
+                });
+            }
 
             var companionText = !HasConfiguredCompanion()
                 ? "Frame-time companion: not configured; GRSP collected normally."
@@ -914,14 +933,18 @@ internal sealed class MainForm : Form
                     ? "Frame-time companion: GRSP collection succeeded, but companion copy failed: " + companionError
                     : "Frame-time companion: " + (companion?.Message ?? "not collected.");
 
+            if (reportError is not null)
+                companionText += "\r\nReport refresh: raw GRSP data is safe, but the human report could not be rebuilt: " + reportError;
+
             ThemedDialog.Show(
                 this,
                 "GRSP results archived successfully and live profiler output was cleared.\r\n\r\n" +
+                "GRSP_Report.html is the human-readable starting point. Full native CSV/developer data remains intact.\r\n\r\n" +
                 "Archive folder:\r\n" + destination + "\r\n\r\n" +
                 companionText,
                 Text,
                 MessageBoxButtons.OK,
-                companionError is null ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+                companionError is null && reportError is null ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
         }
         catch (Exception ex)
         {
