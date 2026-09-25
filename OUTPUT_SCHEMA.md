@@ -2,6 +2,14 @@
 
 ## Public files
 
+### `GRSP_Report.html`
+Human-first post-capture interpretation rebuilt by the standalone manager after collection. It preserves the native measurement outputs and adds sustained workload, call-volume, hot-function, heavy-frame, spike, capture-health, G-RedRuntime/framework and optional CapFrameX correlation views.
+
+When frame-time data is recognized and safely aligned, the report includes a synchronized rendered-frametime / CPU Active / GPU Active / measured REDscript graph with Shift + mouse-wheel zoom.
+
+### `GRSP_Summary.json`
+Compact machine-readable counterpart to the enhanced HTML report. Includes capture/trust metrics, top owners/functions, script-heavy frames, recorded spikes, framework signals, best-effort live-source G-RedRuntime integration detection, adaptive findings and optional CapFrameX synchronization/correlation evidence.
+
 ### `GRSP_Summary.csv`
 One row per capture. Includes capture Unix start/stop, duration, observed call rate, total exclusive-instrumented work, average/P95/P99/max script work per game frame, spike counts, trust fields and top owner.
 
@@ -41,6 +49,8 @@ START / STOP / quiescence markers with QPC, relative time and Unix time.
 
 ### `GRSP_FrameworkCandidates.csv`
 Heuristic signals for framework authors. Signals are triage hints, never automatic rewrite instructions.
+
+The enhanced report places these signals beside a best-effort read-only scan of the source paths recorded in `GRSP_ByFunction.csv`. If current source files are still available, it detects existing G-RedRuntime usage such as Scheduler, StateCache, ContextService, InputHub, EventBus, HookBus, DirtyFlags and GRedHotpathCache. Source availability is not required for report generation.
 
 ## Developer files
 
