@@ -95,7 +95,7 @@
     "legacy_alpha_dll": "detected and blocks installation so two profiler DLLs cannot load together",
     "live_grsp_results": "copy-verify-delete from the live game folder into package-local RESULTS",
     "external_frame_time_results": "copy-verify only; source files are never changed",
-    "restore": "authoritative for manager-owned installs: attempt to archive remaining live GRSP output first, then remove the managed DLL and managed data regardless of managed-file changes; intentionally retain the final empty red4ext/plugins/G-REDscript-Profiler folder"
+    "restore": "archive remaining live GRSP output when possible, remove the manager-owned DLL and data, then intentionally retain the final empty red4ext/plugins/G-REDscript-Profiler folder"
   },
   "total_profiler_contract": {
     "standalone_first": true,

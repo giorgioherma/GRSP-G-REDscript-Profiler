@@ -185,7 +185,7 @@ red4ext\plugins\G-REDscript-Profiler\
 
 is intentionally allowed to remain after restore.
 
-Unmanaged profiler DLLs are never touched. Once GRSP has created its manager ownership marker, however, RESTORE ORIGINAL STATE is authoritative for that managed scope: a changed or missing managed DLL, changed capture metadata, runtime-created files, or unreadable manager-state contents do not remove the user's restore path.
+Unmanaged profiler DLLs are never touched.
 
 ## Collected result handoff
 

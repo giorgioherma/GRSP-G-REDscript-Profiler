@@ -23,7 +23,7 @@ TOTAL may:
 
 ## Restore behavior
 
-TOTAL must call the standalone GRSP restore implementation rather than recreating cleanup logic. Once the standalone manager ownership marker exists, `RESTORE ORIGINAL STATE` is the authoritative exit path: changed or missing managed DLLs, changed profiler-owned data, read-only runtime files, and unreadable manager-state contents do not remove the restore path. Install remains conservative and may refuse unknown/pre-existing state.
+TOTAL must call the standalone GRSP restore implementation rather than recreating cleanup logic. Install and restore ownership rules remain part of the standalone manager.
 
 ## Dependency rule
 

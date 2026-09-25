@@ -84,7 +84,7 @@ internal static class ManagerServices
             else if (!string.Equals(status.InstalledHash, state.InstalledDllHash, StringComparison.OrdinalIgnoreCase))
             {
                 status.State = "MANAGED_DLL_CHANGED";
-                status.Message = "The managed G-REDscript-Profiler.dll changed after installation. RESTORE ORIGINAL STATE remains authoritative and will remove the managed profiler scope.";
+                status.Message = "The managed G-REDscript-Profiler.dll changed after installation. Use RESTORE ORIGINAL STATE to clean the managed installation.";
             }
             else if (status.DllMatchesCurrentPackage)
             {
@@ -259,9 +259,8 @@ internal static class ManagerServices
         // The state file itself is the ownership marker. Install refuses to begin
         // when either the profiler DLL already exists or the data folder is non-empty,
         // so once this marker exists the DLL path and data folder are G-REDscript's
-        // managed scope. Restore must therefore be the unconditional exit path:
-        // changed/missing DLLs, changed capture metadata, runtime output, or even an
-        // unreadable state JSON must never trap the user in an installed state.
+        // managed scope. Restore uses that ownership marker to clean the files
+        // installed and created inside the managed GRSP scope.
         string? archived = null;
         string? archiveWarning = null;
 

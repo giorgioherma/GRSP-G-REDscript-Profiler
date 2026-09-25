@@ -9,7 +9,7 @@ First stable release of the standalone G-REDscript Profiler.
 - F11 START / F11 STOP + export.
 - Capture titles and structured result archives.
 - Verified collection and cleanup of GRSP-owned live files.
-- Conservative install with authoritative restore: existing unmanaged DLLs still block installation, while any manager-owned install always keeps RESTORE ORIGINAL STATE available even if its managed files changed.
+- Managed install, collection and restore workflow.
 - Optional frame-time companion; CapFrameX is recommended/tested but not required.
 - External frame-time results are copy-only.
 - Unified profiler readiness/status UI using the G-CET v1.0.0 dark/cyan/magenta shell.

@@ -442,7 +442,7 @@ internal sealed class MainForm : Form
                 answer = ThemedDialog.Show(
                     this,
                     "Restore the G-REDscript profiler-managed game state?\r\n\r\n" +
-                    "The managed profiler DLL and data folder will be removed even if they changed while profiling. " +
+                    "The profiler-managed DLL and data folder will be removed. " +
                     "Any live profiler output is archived first when possible.",
                     Text,
                     MessageBoxButtons.YesNo,
@@ -979,8 +979,7 @@ internal sealed class MainForm : Form
             await SettleProfilerUiBeforeNotificationAsync();
             ThemedDialog.Show(
                 this,
-                "RESTORE ORIGINAL STATE does not refuse because profiler-managed files changed.\r\n\r\n" +
-                "The remaining failure is a real filesystem/prerequisite problem:\r\n" + ex.Message,
+                "Restore could not complete because a required profiler file or folder is unavailable or locked.\r\n\r\n" + ex.Message,
                 Text,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);

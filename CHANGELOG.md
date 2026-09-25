@@ -52,10 +52,6 @@ First stable public release.
 - Existing `G-REDscript-Profiler.dll` files are never overwritten.
 - Exact packaged DLL already installed is recognized as usable.
 - Different GRSP versions/builds and legacy alpha DLLs block installation.
-- RESTORE ORIGINAL STATE is now the authoritative exit path for a manager-owned install: changed/missing managed DLLs, changed runtime data, read-only files, or unreadable manager-state contents no longer block cleanup.
-- Restore attempts to archive remaining live profiler output first, then removes the manager-owned DLL/data scope and intentionally leaves the final empty data folder.
-- The restore button remains available whenever the manager ownership marker exists, even in changed/missing/invalid managed states.
-- Post-operation warnings/errors use the 500 ms UI-settle path before opening a modal, preventing disabled/transition frames from being frozen underneath the dialog.
 
 ### Collection ownership
 
