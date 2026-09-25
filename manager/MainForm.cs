@@ -831,15 +831,6 @@ internal sealed class MainForm : Form
             if (!string.IsNullOrWhiteSpace(captureTitle.Text))
                 await Task.Run(() => ManagerServices.SaveCaptureTitle(gameRoot.Text.Trim(), captureTitle.Text));
 
-            ThemedDialog.Show(
-                this,
-                "G-REDscript Profiler installed.\r\n\r\n" +
-                "F11 #1 = START\r\n" +
-                "F11 #2 = STOP + EXPORT\r\n\r\n" +
-                "The profiler starts paused and works without any frame-time companion.",
-                Text,
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {
@@ -927,24 +918,22 @@ internal sealed class MainForm : Form
                 });
             }
 
-            var companionText = !HasConfiguredCompanion()
-                ? "Frame-time companion: not configured; GRSP collected normally."
-                : companionError is not null
-                    ? "Frame-time companion: GRSP collection succeeded, but companion copy failed: " + companionError
-                    : "Frame-time companion: " + (companion?.Message ?? "not collected.");
+            if (companionError is not null || reportError is not null)
+            {
+                var warnings = new List<string>();
+                if (companionError is not null)
+                    warnings.Add("Frame-time companion copy failed: " + companionError);
+                if (reportError is not null)
+                    warnings.Add("Report rebuild failed: " + reportError);
 
-            if (reportError is not null)
-                companionText += "\r\nReport refresh: raw GRSP data is safe, but the human report could not be rebuilt: " + reportError;
-
-            ThemedDialog.Show(
-                this,
-                "GRSP results archived successfully and live profiler output was cleared.\r\n\r\n" +
-                "GRSP_Report.html is the human-readable starting point. Full native CSV/developer data remains intact.\r\n\r\n" +
-                "Archive folder:\r\n" + destination + "\r\n\r\n" +
-                companionText,
-                Text,
-                MessageBoxButtons.OK,
-                companionError is null && reportError is null ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+                ThemedDialog.Show(
+                    this,
+                    "GRSP collection completed, but part of the optional post-processing needs attention.\r\n\r\n" +
+                    string.Join("\r\n\r\n", warnings),
+                    Text,
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
         }
         catch (Exception ex)
         {
@@ -976,7 +965,6 @@ internal sealed class MainForm : Form
 
             lastStatus = verified;
             ShowRestoreOutcome(true, "RESTORE SUCCESSFUL — files returned to their original state.");
-            ThemedDialog.Show(this, "All files have been returned to their original state.", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {
