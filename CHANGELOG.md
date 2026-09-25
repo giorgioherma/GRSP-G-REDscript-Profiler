@@ -15,6 +15,15 @@ All notable public changes to G-REDscript Profiler are recorded here.
 - Package-local settings, payload and results resolve from the public package root whether launched through the root EXE or by invoking the internal app directly.
 - CI now verifies the clean package layout and smoke-tests launcher/direct-app status, install and restore.
 
+### Results and interpretation
+
+- Rebuild `GRSP_Report.html` after collection as a CET-style human-first adaptive report while preserving the complete native CSV/developer output set.
+- Add `GRSP_Summary.json` as the compact machine-readable interpretation layer.
+- Add sustained owner cost, call volume, hot functions, heavy script frames, recorded spikes, capture-health/trust gates and G-RedRuntime/framework analysis.
+- Add recognized CapFrameX frametime/CPU/GPU interpretation, safe frame-sequence synchronization, worst-frame evidence, slow-frame/script overlap and an interactive synchronized graph with Shift + mouse-wheel zoom.
+- Add best-effort read-only live-source detection for existing G-RedRuntime adoption and concrete services (Scheduler, StateCache, ContextService, InputHub, EventBus, HookBus, DirtyFlags and GRedHotpathCache) so residual framework signals are not mistaken for missing integration.
+- Use the approved transparent G-RED artwork for the manager/header/report brand and Windows executable icon.
+
 ## [1.0.0] - 2026-09-23
 
 First stable public release.
