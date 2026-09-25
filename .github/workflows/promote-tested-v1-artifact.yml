@@ -1,0 +1,45 @@
+name: Promote tested v1.0.0 artifact
+
+permissions:
+  actions: read
+  contents: write
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/PROMOTE_TESTED_V1_ARTIFACT'
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish exact tested Actions artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: "10892211410"
+          EXPECTED_SHA256: "2d79483321bc9b30523b1c3eb2c0e6725e1869c7332907afb414a2af34e180b8"
+          SOURCE_SHA: "90b87dd883a176801f2c8560330868e48d4c7881"
+          ASSET_NAME: "G-REDscript-Profiler-v1.0.0.zip"
+          NOTES_FILE: "PUBLIC_RELEASE_NOTES.md"
+          RELEASE_TITLE: "G-REDscript Profiler v1.0.0"
+        run: |
+          set -euo pipefail
+
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" > "$ASSET_NAME"
+
+          actual="$(sha256sum "$ASSET_NAME" | awk '{print $1}')"
+          test "$actual" = "$EXPECTED_SHA256"
+          printf '%s  %s\n' "$actual" "$ASSET_NAME" > "$ASSET_NAME.sha256.txt"
+
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/v1.0.0"             -f sha="$SOURCE_SHA" -F force=true >/dev/null
+
+          cp "$NOTES_FILE" release-notes.md
+          printf '\n\n## SHA-256\n\n    %s  %s\n' "$actual" "$ASSET_NAME" >> release-notes.md
+
+          gh release edit v1.0.0             --repo "$GITHUB_REPOSITORY"             --title "$RELEASE_TITLE"             --notes-file release-notes.md             --target "$SOURCE_SHA"             --latest
+
+          gh release upload v1.0.0             "$ASSET_NAME" "$ASSET_NAME.sha256.txt"             --repo "$GITHUB_REPOSITORY" --clobber
