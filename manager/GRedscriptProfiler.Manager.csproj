@@ -19,5 +19,11 @@
     <Authors>Gregor Maher</Authors>
     <Product>G-REDscript Profiler</Product>
     <RepositoryUrl>https://github.com/giorgioherma/GRSP-G-Redscript-Profiler</RepositoryUrl>
+    <ApplicationIcon>..\assets\g-red-app-icon.ico</ApplicationIcon>
   </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\assets\g-red-icon.png">
+      <LogicalName>GRedscriptProfiler.GRedIcon.png</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
 </Project>
