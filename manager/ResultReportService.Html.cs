@@ -352,9 +352,11 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
             .Append("<div class=\"healthline\"><span class=\"muted\">GPU active</span><span>").Append(F(ft.MeanGpuActiveMs)).Append(" ms mean · ").Append(F(ft.P95GpuActiveMs)).Append(" ms P95</span></div></div>")
             .Append("<div class=\"card\"><h3>Synchronization</h3>")
             .Append("<div class=\"healthline\"><span class=\"muted\">Status</span><span class=\"").Append(syncClass).Append("\"><b>").Append(H(ft.SyncQuality)).Append("</b></span></div>")
-            .Append("<div class=\"healthline\"><span class=\"muted\">Frame lag</span><span>").Append(ft.ExactFrameAlignment ? H(FormatLag(ft.FrameLag)) : "—").Append("</span></div>")
+            .Append("<div class=\"healthline\"><span class=\"muted\">Fixed frame offset</span><span>").Append(ft.ExactFrameAlignment ? H(FormatLag(ft.FrameLag)) + " GRSP frame(s)" : "—").Append("</span></div>")
+            .Append("<div class=\"healthline\"><span class=\"muted\">Aligned overlap</span><span>").Append(ft.ExactFrameAlignment ? N(ft.AlignedFramePairs) + " frame pairs" : "—").Append("</span></div>")
+            .Append("<div class=\"healthline\"><span class=\"muted\">GRSP edge frames</span><span>").Append(ft.ExactFrameAlignment ? N(ft.GrspFramesBeforeOverlap) + " before · " + N(ft.GrspFramesAfterOverlap) + " after" : "—").Append("</span></div>")
             .Append("<div class=\"healthline\"><span class=\"muted\">Duration sequence</span><span>Pearson ").Append(F(ft.AlignmentPearson, 3)).Append(" · log ").Append(F(ft.AlignmentLogPearson, 3)).Append("</span></div>")
-            .Append("<div class=\"healthline\"><span class=\"muted\">Start-offset MAD</span><span>").Append(ft.ExactFrameAlignment ? F(ft.StartOffsetMadMs, 3) + " ms" : "—").Append("</span></div>")
+            .Append("<div class=\"healthline\"><span class=\"muted\">Offset stability (MAD)</span><span>").Append(ft.ExactFrameAlignment ? F(ft.StartOffsetMadMs, 3) + " ms" : "—").Append("</span></div>")
             .Append("<div class=\"healthline\"><span class=\"muted\">Method</span><span>").Append(H(ft.AlignmentMethod)).Append("</span></div></div></div>");
 
         if (!ft.Correlated)
