@@ -836,6 +836,7 @@ internal sealed class MainForm : Form
         }
         catch (Exception ex)
         {
+            await SettleProfilerUiBeforeNotificationAsync();
             ThemedDialog.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
@@ -860,6 +861,7 @@ internal sealed class MainForm : Form
         }
         catch (Exception ex)
         {
+            await SettleProfilerUiBeforeNotificationAsync();
             ThemedDialog.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
@@ -928,6 +930,8 @@ internal sealed class MainForm : Form
                 if (reportError is not null)
                     warnings.Add("Report rebuild failed: " + reportError);
 
+                await SettleProfilerUiBeforeNotificationAsync();
+
                 ThemedDialog.Show(
                     this,
                     "GRSP collection completed, but part of the optional post-processing needs attention.\r\n\r\n" +
@@ -939,6 +943,7 @@ internal sealed class MainForm : Form
         }
         catch (Exception ex)
         {
+            await SettleProfilerUiBeforeNotificationAsync();
             ThemedDialog.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
