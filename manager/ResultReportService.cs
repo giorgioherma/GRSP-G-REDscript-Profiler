@@ -17,6 +17,61 @@ internal static partial class ResultReportService
     public const string ReportFileName = "GRSP_Report.html";
     public const string SummaryFileName = "GRSP_Summary.json";
 
+    private static readonly HashSet<string> RuntimeFiles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "GRSP_Summary.csv",
+        "GRSP_ByMod.csv",
+        "GRSP_ByFunction.csv",
+        "GRSP_Timeline.csv",
+        "GRSP_Frames.csv",
+        "GRSP_Spikes.csv",
+        "GRSP_Markers.csv",
+        "GRSP_FrameworkCandidates.csv"
+    };
+
+    private static readonly HashSet<string> MetadataFiles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "GRSP_Status.txt",
+        "RSP_Alpha_Status.txt",
+        "LATEST.txt",
+        "RSP_SessionIndex.csv"
+    };
+
+    public static string GetArchiveRelativePath(string relativePath)
+    {
+        var normalized = relativePath.Replace('\\', '/').TrimStart('/');
+        var fileName = Path.GetFileName(normalized);
+
+        if (normalized.StartsWith("Developer/", StringComparison.OrdinalIgnoreCase))
+            return Path.Combine("Data", "Developer", normalized["Developer/".Length..].Replace('/', Path.DirectorySeparatorChar));
+
+        if (normalized.StartsWith("FrameTime/", StringComparison.OrdinalIgnoreCase))
+            return normalized.Replace('/', Path.DirectorySeparatorChar);
+
+        if (normalized.StartsWith("LiveMetadata/", StringComparison.OrdinalIgnoreCase))
+            return Path.Combine("Data", "Metadata", normalized["LiveMetadata/".Length..].Replace('/', Path.DirectorySeparatorChar));
+
+        if (RuntimeFiles.Contains(fileName))
+            return Path.Combine("Data", "Runtime", fileName);
+
+        if (MetadataFiles.Contains(fileName))
+            return Path.Combine("Data", "Metadata", fileName);
+
+        return Path.Combine("Data", "Metadata", normalized.Replace('/', Path.DirectorySeparatorChar));
+    }
+
+    private static string RuntimePath(string captureRoot, string fileName)
+    {
+        var canonical = Path.Combine(captureRoot, "Data", "Runtime", fileName);
+        return File.Exists(canonical) ? canonical : Path.Combine(captureRoot, fileName);
+    }
+
+    private static string DeveloperRoot(string captureRoot)
+    {
+        var canonical = Path.Combine(captureRoot, "Data", "Developer");
+        return Directory.Exists(canonical) ? canonical : Path.Combine(captureRoot, "Developer");
+    }
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true
@@ -271,40 +326,41 @@ internal static partial class ResultReportService
 
     private static ResultAnalysis Analyze(string captureRoot)
     {
-        var summaryRows = ReadCsv(Path.Combine(captureRoot, "GRSP_Summary.csv"));
+        var summaryRows = ReadCsv(RuntimePath(captureRoot, "GRSP_Summary.csv"));
         if (summaryRows.Count == 0)
         {
-            if (File.Exists(Path.Combine(captureRoot, "RSP_Alpha_Capture.csv")))
+            if (File.Exists(Path.Combine(captureRoot, "RSP_Alpha_Capture.csv")) ||
+                File.Exists(Path.Combine(captureRoot, "Data", "Metadata", "RSP_Alpha_Capture.csv")))
                 throw new InvalidOperationException(
                     "This is a legacy Alpha capture. The v1.0 report builder expects the public GRSP_* output set produced by G-REDscript Profiler 1.0.0.");
             throw new InvalidOperationException("GRSP_Summary.csv was not found or contains no capture row.");
         }
 
         var summary = ParseSummary(summaryRows[0]);
-        var owners = ReadCsv(Path.Combine(captureRoot, "GRSP_ByMod.csv"))
+        var owners = ReadCsv(RuntimePath(captureRoot, "GRSP_ByMod.csv"))
             .Select(ParseOwner)
             .Where(x => !string.IsNullOrWhiteSpace(x.Owner))
             .OrderByDescending(x => x.ExclusiveMsPerSec)
             .ToList();
 
-        var functions = ReadCsv(Path.Combine(captureRoot, "GRSP_ByFunction.csv"))
+        var functions = ReadCsv(RuntimePath(captureRoot, "GRSP_ByFunction.csv"))
             .Select(ParseFunction)
             .Where(x => !string.IsNullOrWhiteSpace(x.Owner) || !string.IsNullOrWhiteSpace(x.SourceFunction))
             .OrderByDescending(x => x.ExclusiveMsPerSec)
             .ToList();
 
-        var frames = ReadCsv(Path.Combine(captureRoot, "GRSP_Frames.csv"))
+        var frames = ReadCsv(RuntimePath(captureRoot, "GRSP_Frames.csv"))
             .Select(ParseFrame)
             .OrderBy(x => x.FrameId)
             .ToList();
 
-        var spikes = ReadCsv(Path.Combine(captureRoot, "GRSP_Spikes.csv"))
+        var spikes = ReadCsv(RuntimePath(captureRoot, "GRSP_Spikes.csv"))
             .Select(ParseSpike)
             .OrderByDescending(x => x.ExclusiveMs)
             .ThenByDescending(x => x.DurationMs)
             .ToList();
 
-        var candidates = ReadCsv(Path.Combine(captureRoot, "GRSP_FrameworkCandidates.csv"))
+        var candidates = ReadCsv(RuntimePath(captureRoot, "GRSP_FrameworkCandidates.csv"))
             .Select(ParseFrameworkCandidate)
             .Where(x => !string.IsNullOrWhiteSpace(x.Owner))
             .ToList();
