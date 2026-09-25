@@ -21,6 +21,10 @@ TOTAL may:
 - orchestrate GRSP together with the exact standalone CET profiler and CapFrameX;
 - correlate the three result sources and generate TOTAL-owned combined output.
 
+## Restore behavior
+
+TOTAL must call the standalone GRSP restore implementation rather than recreating cleanup logic. Once the standalone manager ownership marker exists, `RESTORE ORIGINAL STATE` is the authoritative exit path: changed or missing managed DLLs, changed profiler-owned data, read-only runtime files, and unreadable manager-state contents do not remove the restore path. Install remains conservative and may refuse unknown/pre-existing state.
+
 ## Dependency rule
 
 The files bundled by TOTAL for a GRSP release must be byte-identical to the published standalone package for that release.
