@@ -298,7 +298,54 @@ jobs:
             throw 'Restore smoke test left profiler DLL installed.'
           }
 
-          Write-Host 'Launcher/package-root/install/restore smoke test passed.'
+          # Human-report smoke: exercise the same manager-side post-processing
+          # used after COLLECT RESULTS without depending on a live game capture.
+          $capture = Join-Path $env:RUNNER_TEMP 'grsp-report-fixture'
+          if (Test-Path $capture) { Remove-Item $capture -Recurse -Force }
+          New-Item -ItemType Directory -Force $capture | Out-Null
+
+          @'
+          version,capture_id,scenario,capture_key,start_unix_ms,stop_unix_ms,duration_ms,observed_calls,calls_per_sec,total_exclusive_instrumented_ms,exclusive_ms_per_sec,average_script_ms_per_frame,p95_script_ms_per_frame,p99_script_ms_per_frame,max_script_ms_per_frame,frames,frames_script_over_1ms,frames_script_over_5ms,frames_script_over_16_67ms,spike_events,top_owner,top_owner_exclusive_ms_per_sec,frame_quality,shard_merge_ok,named_static_calls,unresolved_static_calls,dropped_spikes,dropped_hot_paths,timeline_bucket_ms
+          1.0.0,1,"CI_REPORT","GRSP-CI",1000,2000,1000,1000,1000,10,10,1,2,3,4,3,1,0,0,1,"TestOwner",7,GOOD,true,900,0,0,0,50
+          '@ | Set-Content -LiteralPath (Join-Path $capture 'GRSP_Summary.csv') -Encoding utf8
+
+          @'
+          rank,capture_id,scenario,owner,calls,calls_per_sec,exclusive_instrumented_ms,exclusive_ms_per_sec,observed_exclusive_share_pct,active_frame_pct,max_call_ms,max_frame_exclusive_ms,spike_count,max_spike_ms,wrapper_calls,workload_pattern,attribution_note
+          1,1,"CI_REPORT","TestOwner",700,700,7,7,70,100,1,3,1,1,0,SUSTAINED,
+          2,1,"CI_REPORT","G-RedRuntime",300,300,3,3,30,100,0.5,1,0,0,0,BACKGROUND,
+          '@ | Set-Content -LiteralPath (Join-Path $capture 'GRSP_ByMod.csv') -Encoding utf8
+
+          @'
+          capture_id,stable_function_id,owner,source_path,source_line,source_function,outgoing_calls,calls_per_sec,observed_inclusive_ms,exclusive_instrumented_ms,active_frames,active_frame_pct,calls_per_active_frame,max_calls_per_frame,max_call_ms,over_1ms,over_5ms,over_16_67ms
+          1,RSPF-CI,"TestOwner","C:\game\r6\scripts\TestOwner\test.reds",10,"TestOwner::Tick",700,700,7,7,3,100,233,250,1,1,0,0
+          1,RSPF-GR,"G-RedRuntime","C:\game\r6\scripts\G-RedRuntime\Scheduler\Scheduler.reds",20,"GRedRuntime.Scheduler::OnTick",300,300,3,3,3,100,100,120,0.5,0,0,0
+          '@ | Set-Content -LiteralPath (Join-Path $capture 'GRSP_ByFunction.csv') -Encoding utf8
+
+          @'
+          capture_id,scenario,frame_id,frame_start_ms,frame_end_ms,frame_start_unix_ms,frame_end_unix_ms,frame_duration_ms,total_calls,unique_owners,max_call_depth,observed_inclusive_ms,exclusive_instrumented_ms,largest_call_ms,spike_count,partial
+          1,"CI_REPORT",0,0,16,1000,1016,16,300,2,4,2,1,0.5,0,false
+          1,"CI_REPORT",1,16,32,1016,1032,16,350,2,4,3,2,1,1,false
+          1,"CI_REPORT",2,32,48,1032,1048,16,350,2,4,4,3,1,0,false
+          '@ | Set-Content -LiteralPath (Join-Path $capture 'GRSP_Frames.csv') -Encoding utf8
+
+          @'
+          capture_id,scenario,capture_ms,unix_ms,frame_id,thread_id,stable_callsite_id,owner,source_path,source_function,source_line,call_kind,target,duration_ms,exclusive_instrumented_ms,depth,threshold
+          1,"CI_REPORT",20,1020,1,1,RSPC-CI,"TestOwner","C:\game\r6\scripts\TestOwner\test.reds","TestOwner::Tick",10,static,"Target",1.2,1.0,1,">=1ms"
+          '@ | Set-Content -LiteralPath (Join-Path $capture 'GRSP_Spikes.csv') -Encoding utf8
+
+          @'
+          capture_id,owner,calls,calls_per_sec,active_frame_pct,calls_per_active_frame,root_calls,avg_descendants_per_root,max_descendants_per_root,unique_targets,shared_targets_ge3owners,framework_shared_targets_ge3owners,wrapper_calls,cross_mod_calls_out,cross_mod_calls_in,threads,signals,framework_primitives
+          1,"G-RedRuntime",300,300,100,100,10,20,200,10,5,5,0,10,10,2,"SHARED_QUERY_CONSUMER|CROSS_MOD_CHATTER","SHARED_STATE_SERVICE|EVENT_BRIDGE_OR_SHARED_STATE"
+          '@ | Set-Content -LiteralPath (Join-Path $capture 'GRSP_FrameworkCandidates.csv') -Encoding utf8
+
+          'GRSP CI report fixture' | Set-Content -LiteralPath (Join-Path $capture 'GRSP_Status.txt') -Encoding utf8
+
+          $reportResult = (& $launcher --report --capture $capture --json | ConvertFrom-Json)
+          if (!$reportResult.ok) { throw "Report smoke test failed: $($reportResult.error)" }
+          if (!(Test-Path -LiteralPath (Join-Path $capture 'GRSP_Report.html') -PathType Leaf)) { throw 'GRSP_Report.html was not generated.' }
+          if (!(Test-Path -LiteralPath (Join-Path $capture 'GRSP_Summary.json') -PathType Leaf)) { throw 'GRSP_Summary.json was not generated.' }
+
+          Write-Host 'Launcher/package-root/install/restore/report smoke test passed.'
 
       - name: Stage portable release ZIP
         shell: pwsh
