@@ -151,7 +151,18 @@ internal static partial class ResultReportService
                     threads = x.Threads,
                     signals = SplitPipe(x.Signals),
                     frameworkPrimitives = SplitPipe(x.FrameworkPrimitives)
-                })
+                }),
+                liveSourceIntegration = a.SourceIntegrations
+                    .Where(x => x.SourceAvailable || x.ReferencesGRedRuntime)
+                    .Select(x => new
+                    {
+                        owner = x.Owner,
+                        sourceAvailable = x.SourceAvailable,
+                        filesScanned = x.FilesScanned,
+                        usesGRedRuntime = x.ReferencesGRedRuntime,
+                        services = x.Services,
+                        runtimeVersion = x.RuntimeVersion
+                    })
             },
             frameTime = BuildFrameTimeSummary(a.FrameTime),
             findings = a.Findings.Select(x => new
@@ -313,6 +324,7 @@ internal static partial class ResultReportService
             .ThenByDescending(x => x.CallsPerSec)
             .ToList();
 
+        var sourceIntegrations = AnalyzeSourceIntegrations(owners, functions);
         var frameTime = AnalyzeFrameTime(captureRoot, frames, spikes);
         var analysis = new ResultAnalysis
         {
@@ -325,6 +337,7 @@ internal static partial class ResultReportService
             FrameworkCandidates = candidates,
             FrameworkOwner = frameworkOwner,
             FrameworkFunctions = frameworkFunctions,
+            SourceIntegrations = sourceIntegrations,
             FrameTime = frameTime
         };
 
@@ -387,10 +400,20 @@ internal static partial class ResultReportService
                                  !x.Signals.Equals("NO_STRONG_SIGNAL", StringComparison.OrdinalIgnoreCase));
         if (candidate is not null)
         {
+            var integration = a.SourceIntegrations
+                .FirstOrDefault(x => x.Owner.Equals(candidate.Owner, StringComparison.OrdinalIgnoreCase));
+
+            var alreadyIntegrated = integration?.ReferencesGRedRuntime == true;
+            var serviceText = alreadyIntegrated && integration!.Services.Count > 0
+                ? " Detected services: " + string.Join(", ", integration.Services) + "."
+                : "";
+
             findings.Add(new(
-                "Framework triage signal",
+                alreadyIntegrated ? "Residual framework triage signal" : "Framework triage signal",
                 $"{candidate.Owner}: {candidate.Signals.Replace("|", " · ")}",
-                "These are heuristic signals from observed workload shape. They identify source worth inspecting for shared services, caching, eventing or wrapper consolidation; they do not prove that a rewrite is semantically safe."));
+                alreadyIntegrated
+                    ? "The live source already references G-RedRuntime, so this is residual workload to inspect inside the current integration rather than a recommendation to adopt the framework again." + serviceText
+                    : "These are heuristic signals from observed workload shape. They identify source worth inspecting for shared services, caching, eventing or wrapper consolidation; they do not prove that a rewrite is semantically safe."));
         }
 
         if (a.FrameTime is { Correlated: true } ft)
@@ -684,6 +707,7 @@ internal static partial class ResultReportService
         public List<FrameworkCandidate> FrameworkCandidates { get; init; } = [];
         public OwnerMetric? FrameworkOwner { get; init; }
         public List<FunctionMetric> FrameworkFunctions { get; init; } = [];
+        public List<SourceIntegrationMetric> SourceIntegrations { get; init; } = [];
         public FrameTimeAnalysis? FrameTime { get; init; }
         public List<Finding> Findings { get; set; } = [];
     }
