@@ -342,6 +342,7 @@ jobs:
           $managedData = Join-Path $fixture 'red4ext\plugins\G-REDscript-Profiler'
           $managedState = Join-Path $managedData '.manager_state.json'
           'externally changed managed dll' | Set-Content -LiteralPath $managedDll -Encoding utf8
+          (Get-Item -LiteralPath $managedDll).IsReadOnly = $true
           'runtime-created content' | Set-Content -LiteralPath (Join-Path $managedData 'runtime-change.txt') -Encoding utf8
           $readonly = Join-Path $managedData 'runtime-readonly.txt'
           'read-only runtime content' | Set-Content -LiteralPath $readonly -Encoding utf8
