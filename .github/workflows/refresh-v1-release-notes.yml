@@ -1,0 +1,26 @@
+name: Refresh v1.0.0 release notes
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/REFRESH_V1_RELEASE_NOTES'
+
+jobs:
+  refresh-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refresh release page
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES_FILE: "PUBLIC_RELEASE_NOTES.md"
+          RELEASE_TITLE: "G-REDscript Profiler v1.0.0"
+        run: |
+          set -euo pipefail
+          gh release edit v1.0.0 --repo "$GITHUB_REPOSITORY" --title "$RELEASE_TITLE" --notes-file "$NOTES_FILE"
+          gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/freeze-v1-release-meta" >/dev/null 2>&1 || true
