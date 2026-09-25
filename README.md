@@ -12,6 +12,12 @@ G-REDscript Profiler (GRSP) is a standalone RED4ext profiler for Cyberpunk 2077 
 
 The public release is a **portable ZIP**. No installer is required.
 
+**Canonical v1.0.0 download:** [G-REDscript-Profiler-v1.0.0.zip](https://github.com/giorgioherma/GRSP-G-REDscript-Profiler/releases/download/v1.0.0/G-REDscript-Profiler-v1.0.0.zip)
+
+**Frozen build:** source commit `8c043c971a37835aee6bbb87261c1426dd7f4d38` · SHA-256 `9fb2a356553ad5dedf4859c02b6637b7a06513f953086f939925ae5fe800a5ac`.
+
+GitHub **Releases** is the canonical download location for this frozen build.
+
 ```text
 G-REDscript-Profiler-v1.0.0.zip
 └─ G-REDscript-Profiler\
