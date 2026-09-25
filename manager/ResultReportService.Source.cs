@@ -103,10 +103,18 @@ internal static partial class ResultReportService
             AddIfPresent(services, text, "EventBus", "GetEventBus");
             AddIfPresent(services, text, "HookBus", "GetHookBus");
             AddIfPresent(services, text, "DirtyFlags", "GetDirtyFlags");
-            AddIfPresent(services, text, "Hotpath cache", "GRedHotpathCache");
+
+            var hasHotpathCache =
+                text.Contains("GRedHotpathCache", StringComparison.OrdinalIgnoreCase) ||
+                files.Any(file => Path.GetFileName(file)
+                    .Contains("GRedHotpathCache", StringComparison.OrdinalIgnoreCase));
+            if (hasHotpathCache)
+                services.Add("Hotpath cache");
 
             var referencesRuntime =
                 text.Contains("GRedRuntime", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("G-RedRuntime", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("G-REDruntime", StringComparison.OrdinalIgnoreCase) ||
                 services.Count > 0;
 
             var version = "";
