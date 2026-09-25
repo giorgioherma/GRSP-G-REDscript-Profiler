@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 
 namespace GRedscriptProfiler.Manager;
 
@@ -1203,41 +1204,35 @@ internal sealed class MainForm : Form
 
     private static Control CreateHeaderLogo(Point location)
     {
-        var logo = new Panel
+        var logo = new PictureBox
         {
             Location = location,
             Size = new Size(52, 52),
             BackColor = Color.Transparent,
-            TabStop = false
+            SizeMode = PictureBoxSizeMode.Zoom,
+            TabStop = false,
+            Image = LoadBrandImage()
         };
-
-        logo.Paint += (_, e) =>
-        {
-            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            using var cyanPen = new Pen(ThemeCyan, 1.5F);
-            using var magentaPen = new Pen(ThemeMagenta, 1.5F);
-            e.Graphics.DrawRectangle(cyanPen, 2, 2, 47, 47);
-            e.Graphics.DrawLine(magentaPen, 8, 45, 44, 45);
-
-            using var mainFont = new Font("Segoe UI Semibold", 12.5F, FontStyle.Bold);
-            using var subFont = new Font("Segoe UI Semibold", 6.5F, FontStyle.Bold);
-            TextRenderer.DrawText(
-                e.Graphics,
-                "G-R",
-                mainFont,
-                new Rectangle(4, 8, 44, 25),
-                ThemeText,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-            TextRenderer.DrawText(
-                e.Graphics,
-                "SP",
-                subFont,
-                new Rectangle(4, 31, 44, 10),
-                ThemeMagenta,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-        };
-
         return logo;
+    }
+
+    private static Image? LoadBrandImage()
+    {
+        try
+        {
+            using var stream = Assembly.GetExecutingAssembly()
+                .GetManifestResourceStream("GRedscriptProfiler.GRedIcon.png");
+            if (stream is null)
+                return null;
+
+            using var source = Image.FromStream(stream);
+            return new Bitmap(source);
+        }
+        catch
+        {
+            // Branding must never prevent the profiler UI from starting.
+            return null;
+        }
     }
 
     private static void AddHeaderAccent(Control page, int y)
