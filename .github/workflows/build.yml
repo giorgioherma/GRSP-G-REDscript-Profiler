@@ -10,6 +10,10 @@ on:
     branches: [ main, master, 'manager/**', 'profiler/**' ]
   pull_request:
 
+concurrency:
+  group: grsp-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: windows-latest
