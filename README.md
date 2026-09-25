@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/g-red-icon.png" alt="G-REDscript Profiler" width="192">
+</p>
+
 # G-REDscript Profiler
 
 **v1.0.0 — first stable release**
@@ -203,7 +207,11 @@ Developer\
   RSP_WorkMap.csv
 ```
 
-Open `GRSP_Report.html` first.
+Open `GRSP_Report.html` first. After collection, the standalone manager rebuilds it as the human-first interpretation layer while preserving every native CSV/developer output unchanged. It adds sustained-owner and call-volume views, hot functions, script-heavy frames, recorded spikes, capture-health gates, G-RedRuntime/framework triage, and a compact machine-readable `GRSP_Summary.json`.
+
+When a recognized CapFrameX capture was copied, the report adds rendered frametime, CPU Active, GPU Active, frame-sequence synchronization, slow-frame/script overlap, recorded-spike overlap, worst-frame evidence, and a synchronized timeline. Hold **Shift** and use the mouse wheel over the graph to zoom around the pointer.
+
+The framework section also performs a best-effort, read-only scan of the live REDscript source paths recorded by GRSP. This lets the report distinguish a mod that has **already adopted G-RedRuntime** (Scheduler, StateCache, ContextService, InputHub, EventBus, HookBus, DirtyFlags or GRedHotpathCache) from a mod that only presents a framework-candidate workload shape. A residual signal on an already integrated mod means inspect the remaining hot path; it is not a recommendation to integrate the framework again.
 
 The public timeline uses 50 ms buckets and exposes capture-relative plus Unix timing for correlation with other profilers.
 
@@ -229,6 +237,7 @@ G-REDscript-Profiler.exe --status --game "D:\Games\Cyberpunk 2077" --json
 G-REDscript-Profiler.exe --install --game "D:\Games\Cyberpunk 2077" --json
 G-REDscript-Profiler.exe --title CITY_DRIVING --game "D:\Games\Cyberpunk 2077" --json
 G-REDscript-Profiler.exe --collect --game "D:\Games\Cyberpunk 2077" --json
+G-REDscript-Profiler.exe --report --capture "RESULTS\Capture_..." --json
 G-REDscript-Profiler.exe --restore --game "D:\Games\Cyberpunk 2077" --json
 G-REDscript-Profiler.exe --start --game "D:\Games\Cyberpunk 2077" --json
 ```
