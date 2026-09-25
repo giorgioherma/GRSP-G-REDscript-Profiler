@@ -122,8 +122,8 @@ internal static partial class ResultReportService
                     var yv = Math.Max(0, grspFrames[grspIndex].FrameDurationMs);
                     x[p] = xv;
                     y[p] = yv;
-                    lx[p] = Math.Log1p(xv);
-                    ly[p] = Math.Log1p(yv);
+                    lx[p] = Math.Log(1.0 + xv);
+                    ly[p] = Math.Log(1.0 + yv);
                 }
 
                 var pearson = Pearson(x, y);
