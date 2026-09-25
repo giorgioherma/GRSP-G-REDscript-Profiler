@@ -45,3 +45,13 @@ G-REDscript-Profiler-v1.0.0.zip
 ```
 
 Extract to a writable folder and run `G-REDscript-Profiler.exe`.
+
+## Frozen canonical build
+
+- Source commit: `8c043c971a37835aee6bbb87261c1426dd7f4d38`
+- GitHub Actions run: `36168178334`
+- Frozen artifact ID: `10879746258`
+- Canonical release asset: `G-REDscript-Profiler-v1.0.0.zip`
+- SHA-256: `9fb2a356553ad5dedf4859c02b6637b7a06513f953086f939925ae5fe800a5ac`
+
+This exact artifact is the frozen v1.0.0 public build. GitHub Releases is the canonical download surface; later repository-only documentation or metadata changes do not redefine the v1.0.0 binary.
