@@ -335,10 +335,33 @@ jobs:
           # Do not ship the CI capture inside the portable artifact.
           Remove-Item -LiteralPath $archived -Recurse -Force
 
+          # Regression: once the manager ownership marker exists, RESTORE ORIGINAL
+          # STATE must remain the unconditional exit path. Simulate a changed DLL,
+          # runtime-created data, a read-only managed file, and even corrupted state.
+          $managedDll = Join-Path $fixture 'red4ext\plugins\G-REDscript-Profiler.dll'
+          $managedData = Join-Path $fixture 'red4ext\plugins\G-REDscript-Profiler'
+          $managedState = Join-Path $managedData '.manager_state.json'
+          'externally changed managed dll' | Set-Content -LiteralPath $managedDll -Encoding utf8
+          'runtime-created content' | Set-Content -LiteralPath (Join-Path $managedData 'runtime-change.txt') -Encoding utf8
+          $readonly = Join-Path $managedData 'runtime-readonly.txt'
+          'read-only runtime content' | Set-Content -LiteralPath $readonly -Encoding utf8
+          (Get-Item -LiteralPath $readonly).IsReadOnly = $true
+          '{ invalid manager state on purpose' | Set-Content -LiteralPath $managedState -Encoding utf8
+
+          $changedStatus = (& $launcher --status --game $fixture --json | ConvertFrom-Json)
+          if (!$changedStatus.ok) { throw "Changed-state status failed: $($changedStatus.error)" }
+          if (!$changedStatus.result.ManagedStatePresent) { throw 'Corrupted manager state stopped being an ownership marker.' }
+
           $restore = (& $launcher --restore --game $fixture --json | ConvertFrom-Json)
-          if (!$restore.ok) { throw "Restore smoke test failed: $($restore.error)" }
-          if (Test-Path -LiteralPath (Join-Path $fixture 'red4ext\plugins\G-REDscript-Profiler.dll') -PathType Leaf) {
-            throw 'Restore smoke test left profiler DLL installed.'
+          if (!$restore.ok) { throw "Authoritative restore smoke test failed: $($restore.error)" }
+          if (Test-Path -LiteralPath $managedDll -PathType Leaf) {
+            throw 'Restore left the changed managed profiler DLL installed.'
+          }
+          if (Test-Path -LiteralPath $managedState -PathType Leaf) {
+            throw 'Restore left the managed state marker behind.'
+          }
+          if (@(Get-ChildItem -LiteralPath $managedData -Force -ErrorAction SilentlyContinue).Count -ne 0) {
+            throw 'Restore did not return the manager-owned data folder to an empty state.'
           }
 
           # Report smoke: exercise the same manager-side post-processing
