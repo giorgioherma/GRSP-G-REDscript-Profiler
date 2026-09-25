@@ -358,8 +358,8 @@ internal sealed class MainForm : Form
         };
 
         var statusGroup = new GroupBox { Text = "Profiler status" };
-        statusGroup.SetBounds(20, 66, 820, 250);
-        status.SetBounds(18, 27, 775, 178);
+        statusGroup.SetBounds(20, 66, 820, 286);
+        status.SetBounds(18, 27, 775, 214);
         status.Font = new Font("Segoe UI", 9.5F);
         status.ReadOnly = true;
         status.BorderStyle = BorderStyle.None;
@@ -370,12 +370,12 @@ internal sealed class MainForm : Form
         status.ForeColor = ThemeText;
 
         refresh.Text = "REFRESH";
-        refresh.SetBounds(694, 210, 100, 28);
+        refresh.SetBounds(694, 246, 100, 28);
         refresh.Click += async (_, _) => await RefreshStatusAsync();
         statusGroup.Controls.AddRange([status, refresh]);
 
         var captureGroup = new GroupBox { Text = "Capture" };
-        captureGroup.SetBounds(20, 326, 820, 112);
+        captureGroup.SetBounds(20, 362, 820, 72);
 
         var captureLabel = new Label
         {
@@ -395,18 +395,10 @@ internal sealed class MainForm : Form
         saveCaptureTitle.SetBounds(544, 22, 120, 30);
         saveCaptureTitle.Click += async (_, _) => await SaveCaptureTitleAsync();
 
-        var captureHint = new Label
-        {
-            Text = "The title is read when capture starts and becomes part of the capture folder name.\r\nF11 #1 = START   ·   F11 #2 = STOP + EXPORT   ·   closing the game while recording also exports what was captured.",
-            MaximumSize = new Size(775, 0),
-            AutoSize = true,
-            ForeColor = ThemeText,
-            Location = new Point(18, 62)
-        };
-        captureGroup.Controls.AddRange([captureLabel, captureTitle, saveCaptureTitle, captureHint]);
+        captureGroup.Controls.AddRange([captureLabel, captureTitle, saveCaptureTitle]);
 
         readyGroup.Text = "";
-        readyGroup.SetBounds(20, 448, 820, 138);
+        readyGroup.SetBounds(20, 444, 820, 144);
 
         readyHeading.SetBounds(18, 16, 775, 26);
         readyHeading.Font = new Font("Segoe UI Semibold", 11F);
@@ -417,7 +409,7 @@ internal sealed class MainForm : Form
         readyInstallInstruction.AutoSize = false;
         readyInstallInstruction.Text = "1. Install G-REDscript Profiler and save a capture title.";
 
-        readyCaptureInstructions.SetBounds(18, 64, 775, 64);
+        readyCaptureInstructions.SetBounds(18, 64, 775, 72);
         readyCaptureInstructions.Font = new Font("Segoe UI", 9.5F);
         readyCaptureInstructions.AutoSize = false;
         readyCaptureInstructions.Text =
