@@ -606,7 +606,7 @@ internal sealed class MainForm : Form
             "INSTALLED_OTHER_PACKAGE" => "Different managed G-REDscript Profiler build installed ❌",
             "LEGACY_GRSP_PRESENT" => "Legacy alpha profiler DLL detected ❌",
             "STALE_DATA" => "Existing profiler data folder is not clean ❌",
-            "MANAGED_DLL_CHANGED" => "Managed profiler DLL changed · restore available ⚠️",
+            "MANAGED_DLL_CHANGED" => "Managed profiler DLL changed ⚠️",
             "MANAGED_DLL_MISSING" => "Managed profiler DLL missing · restore available ⚠️",
             _ => snapshot.Message + " ⚠️"
         };
