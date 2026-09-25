@@ -250,7 +250,7 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
             return;
 
         sb.Append("<div class=\"section\"><h2>G-RedRuntime &amp; framework opportunities</h2>")
-            .Append("<div class=\"note\"><b>G-RedRuntime is shared infrastructure.</b> Its scheduler, state cache, input hub and routing services can legitimately carry traffic on behalf of client mods. Framework-candidate signals below are heuristic triage hints, never automatic rewrite instructions.</div>");
+            .Append("<div class=\"note\"><b>G-RedRuntime is shared infrastructure.</b> Its scheduler, state cache, context, input, event and hook services can legitimately carry traffic on behalf of client mods. Framework-candidate signals below are heuristic triage hints, never automatic rewrite instructions. When the original live REDscript source is still available, this report also scans it read-only so an already integrated mod is not presented as if it still needs to adopt G-RedRuntime.</div>");
 
         if (a.FrameworkOwner is not null)
         {
@@ -280,14 +280,45 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
         if (a.FrameworkCandidates.Count > 0)
         {
             var cost = a.Owners.ToDictionary(x => x.Owner, x => x.ExclusiveMsPerSec, StringComparer.OrdinalIgnoreCase);
-            sb.Append("<h3>Framework triage candidates</h3><table><thead><tr><th>Owner</th><th class=\"num\">Measured ms/s</th><th class=\"num\">Calls/s</th><th class=\"num\">Active frames</th><th>Signals</th><th>Possible framework primitive</th></tr></thead><tbody>");
+            var integration = a.SourceIntegrations.ToDictionary(x => x.Owner, StringComparer.OrdinalIgnoreCase);
+            sb.Append("<h3>Framework triage candidates</h3><table><thead><tr><th>Owner</th><th class=\"num\">Measured ms/s</th><th class=\"num\">Calls/s</th><th class=\"num\">Active frames</th><th>Current live integration</th><th>Signals</th><th>Possible framework primitive</th></tr></thead><tbody>");
             foreach (var x in a.FrameworkCandidates.Take(20))
             {
                 cost.TryGetValue(x.Owner, out var ownerMs);
+                integration.TryGetValue(x.Owner, out var source);
+
                 sb.Append("<tr><td><b class=\"").Append(IsInfrastructureOwner(x.Owner) ? "infra" : "").Append("\">").Append(H(x.Owner)).Append("</b></td>")
                     .Append("<td class=\"num\">").Append(F(ownerMs))
                     .Append("</td><td class=\"num\">").Append(F(x.CallsPerSec, 0))
                     .Append("</td><td class=\"num\">").Append(F(x.ActiveFramePct, 1)).Append("%</td><td>");
+
+                if (source is null || !source.SourceAvailable)
+                {
+                    sb.Append("<span class=\"muted\">source unavailable</span>");
+                }
+                else if (IsInfrastructureOwner(x.Owner))
+                {
+                    sb.Append("<span class=\"good\"><b>G-RedRuntime core</b></span>");
+                    if (!string.IsNullOrWhiteSpace(source.RuntimeVersion))
+                        sb.Append("<div class=\"muted\">").Append(H(source.RuntimeVersion)).Append("</div>");
+                }
+                else if (source.ReferencesGRedRuntime)
+                {
+                    sb.Append("<span class=\"good\"><b>already integrated</b></span>");
+                    if (source.Services.Count > 0)
+                    {
+                        sb.Append("<div>");
+                        foreach (var service in source.Services)
+                            sb.Append("<span class=\"pill\">").Append(H(service)).Append("</span>");
+                        sb.Append("</div>");
+                    }
+                }
+                else
+                {
+                    sb.Append("<span class=\"muted\">no G-RedRuntime reference detected</span>");
+                }
+
+                sb.Append("</td><td>");
                 foreach (var signal in SplitPipe(x.Signals))
                     sb.Append("<span class=\"pill\">").Append(H(signal.Replace('_', ' '))).Append("</span>");
                 sb.Append("</td><td>");
@@ -295,7 +326,8 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
                     sb.Append("<span class=\"pill\">").Append(H(primitive.Replace('_', ' '))).Append("</span>");
                 sb.Append("</td></tr>");
             }
-            sb.Append("</tbody></table>");
+            sb.Append("</tbody></table>")
+              .Append("<div class=\"note\">Source integration detection is read-only and best-effort. It recognizes the G-RedRuntime APIs actually present in the current source tree, including Scheduler, StateCache, ContextService, InputHub, EventBus, HookBus, DirtyFlags and the GRedHotpathCache pattern. A remaining profiler signal on an <b>already integrated</b> mod means inspect the residual hot path; it does not mean the framework integration failed.</div>");
         }
 
         sb.Append("</div>");
