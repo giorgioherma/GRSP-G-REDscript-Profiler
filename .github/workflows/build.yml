@@ -352,6 +352,7 @@ jobs:
           $changedStatus = (& $launcher --status --game $fixture --json | ConvertFrom-Json)
           if (!$changedStatus.ok) { throw "Changed-state status failed: $($changedStatus.error)" }
           if (!$changedStatus.result.ManagedStatePresent) { throw 'Corrupted manager state stopped being an ownership marker.' }
+          if ($changedStatus.result.State -ne 'INVALID_MANAGED_STATE') { throw "Corrupted managed state was masked by DLL status: $($changedStatus.result.State)" }
 
           $restore = (& $launcher --restore --game $fixture --json | ConvertFrom-Json)
           if (!$restore.ok) { throw "Authoritative restore smoke test failed: $($restore.error)" }
