@@ -441,7 +441,9 @@ internal sealed class MainForm : Form
             {
                 answer = ThemedDialog.Show(
                     this,
-                    "All files will be returned to their original state.",
+                    "Restore the G-REDscript profiler-managed game state?\r\n\r\n" +
+                    "The managed profiler DLL and data folder will be removed even if they changed while profiling. " +
+                    "Any live profiler output is archived first when possible.",
                     Text,
                     MessageBoxButtons.YesNo,
                     MessageBoxIcon.Warning);
@@ -604,8 +606,8 @@ internal sealed class MainForm : Form
             "INSTALLED_OTHER_PACKAGE" => "Different managed G-REDscript Profiler build installed ❌",
             "LEGACY_GRSP_PRESENT" => "Legacy alpha profiler DLL detected ❌",
             "STALE_DATA" => "Existing profiler data folder is not clean ❌",
-            "MANAGED_DLL_CHANGED" => "Managed profiler DLL changed ❌",
-            "MANAGED_DLL_MISSING" => "Managed profiler DLL missing ❌",
+            "MANAGED_DLL_CHANGED" => "Managed profiler DLL changed · restore available ⚠️",
+            "MANAGED_DLL_MISSING" => "Managed profiler DLL missing · restore available ⚠️",
             _ => snapshot.Message + " ⚠️"
         };
 
@@ -800,12 +802,12 @@ internal sealed class MainForm : Form
             return;
         }
 
-        var managedCurrent = snapshot.State == "INSTALLED_CURRENT" && snapshot.ManagedStatePresent;
         var validInstalled = snapshot.State is "INSTALLED_CURRENT" or "PREEXISTING_CURRENT";
 
         install.Enabled = !busy && snapshot.GameRootValid && snapshot.Red4extPresent && snapshot.State == "NOT_INSTALLED";
         collect.Enabled = !busy && snapshot.CompletedCaptureCount > 0;
-        restore.Enabled = !busy && managedCurrent;
+        // Any manager ownership marker must leave the user an exit path.
+        restore.Enabled = !busy && snapshot.GameRootValid && snapshot.Red4extPresent && snapshot.ManagedStatePresent;
         saveCaptureTitle.Enabled = !busy && validInstalled && snapshot.CaptureTitlePresent;
 
         startCompanion.Enabled = !busy && HasConfiguredCompanion();
@@ -968,10 +970,12 @@ internal sealed class MainForm : Form
         }
         catch (Exception ex)
         {
-            ShowRestoreOutcome(false, "RESTORE NOT COMPLETED — managed state was preserved where needed.");
+            ShowRestoreOutcome(false, "RESTORE NOT COMPLETED — close anything locking the profiler files and retry.");
+            await SettleProfilerUiBeforeNotificationAsync();
             ThemedDialog.Show(
                 this,
-                "Restore could not complete safely.\r\n\r\n" + ex.Message,
+                "RESTORE ORIGINAL STATE does not refuse because profiler-managed files changed.\r\n\r\n" +
+                "The remaining failure is a real filesystem/prerequisite problem:\r\n" + ex.Message,
                 Text,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
@@ -1033,6 +1037,18 @@ internal sealed class MainForm : Form
         {
             UseShellExecute = true
         });
+    }
+
+    private async Task SettleProfilerUiBeforeNotificationAsync()
+    {
+        // Finish the dark UI repaint before a post-operation modal takes focus.
+        SetBusy(false);
+        await RefreshStatusAsync(silent: true);
+        Refresh();
+        Update();
+        profilerPage.Refresh();
+        profilerPage.Update();
+        await Task.Delay(500);
     }
 
     private void ShowRestoreProgress(string message)
