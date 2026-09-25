@@ -69,7 +69,7 @@ internal static class ManagerServices
             catch (Exception ex)
             {
                 status.State = "INVALID_MANAGED_STATE";
-                status.Message = "GRSP manager state is invalid: " + ex.Message;
+                status.Message = "GRSP manager state is invalid, but the ownership marker is present and RESTORE ORIGINAL STATE remains available: " + ex.Message;
             }
         }
 
@@ -79,12 +79,12 @@ internal static class ManagerServices
             if (!status.DllPresent)
             {
                 status.State = "MANAGED_DLL_MISSING";
-                status.Message = "This package has managed state, but G-REDscript-Profiler.dll is missing. Use Restore Original State before reinstalling.";
+                status.Message = "This package has managed state, but G-REDscript-Profiler.dll is missing. RESTORE ORIGINAL STATE remains available and will clean the managed scope.";
             }
             else if (!string.Equals(status.InstalledHash, state.InstalledDllHash, StringComparison.OrdinalIgnoreCase))
             {
                 status.State = "MANAGED_DLL_CHANGED";
-                status.Message = "The managed G-REDscript-Profiler.dll changed after installation. It will not be overwritten or deleted.";
+                status.Message = "The managed G-REDscript-Profiler.dll changed after installation. RESTORE ORIGINAL STATE remains authoritative and will remove the managed profiler scope.";
             }
             else if (status.DllMatchesCurrentPackage)
             {
@@ -256,29 +256,69 @@ internal static class ManagerServices
         if (!File.Exists(statePath))
             return "No managed G-REDscript Profiler installation was found. Nothing was changed.";
 
-        var state = LoadState(statePath);
+        // The state file itself is the ownership marker. Install refuses to begin
+        // when either the profiler DLL already exists or the data folder is non-empty,
+        // so once this marker exists the DLL path and data folder are G-REDscript's
+        // managed scope. Restore must therefore be the unconditional exit path:
+        // changed/missing DLLs, changed capture metadata, runtime output, or even an
+        // unreadable state JSON must never trap the user in an installed state.
+        string? archived = null;
+        string? archiveWarning = null;
+
+        try
+        {
+            archived = CollectLiveResultsInternal(gameRoot, requireCompletedCapture: false);
+        }
+        catch (Exception ex)
+        {
+            archiveWarning = ex.Message;
+
+            // Best-effort preservation of the whole managed data folder before
+            // cleanup. Failure here is reported, but it does not block restore.
+            try
+            {
+                var dataDir = DataDirectory(gameRoot);
+                if (DirectoryHasEntries(dataDir))
+                {
+                    Directory.CreateDirectory(ArchiveResultsDirectory);
+                    var recovery = UniqueDirectory(
+                        ArchiveResultsDirectory,
+                        $"RestoreRecovery_{DateTime.Now:yyyyMMdd-HHmmss}");
+                    CopyDirectoryVerified(dataDir, recovery);
+                    archived = recovery;
+                }
+            }
+            catch (Exception recoveryEx)
+            {
+                archiveWarning += " Recovery copy also failed: " + recoveryEx.Message;
+            }
+        }
+
         var target = TargetDll(gameRoot);
-
-        if (File.Exists(target) &&
-            !string.Equals(Sha256(target), state.InstalledDllHash, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException(
-                "G-REDscript-Profiler.dll changed after installation. Restore stopped without deleting or overwriting it.");
-
-        var archived = CollectLiveResultsInternal(gameRoot, requireCompletedCapture: false);
-
-        if (File.Exists(target))
-            File.Delete(target);
+        DeleteFileForce(target);
 
         // This directory was empty/absent before our managed install, so the manager
-        // owns its contents. Leave the final empty directory intentionally.
-        var dataDir = DataDirectory(gameRoot);
-        DeleteDirectoryContents(dataDir);
-        Directory.CreateDirectory(dataDir);
+        // owns its contents. Restore it to that original empty state regardless of
+        // what changed inside the managed folder while profiling.
+        var managedDataDir = DataDirectory(gameRoot);
+        DeleteDirectoryContentsForce(managedDataDir);
+        Directory.CreateDirectory(managedDataDir);
 
-        return string.IsNullOrWhiteSpace(archived)
+        if (File.Exists(target))
+            throw new IOException("Restore could not remove G-REDscript-Profiler.dll. Close any process locking the file and run RESTORE ORIGINAL STATE again.");
+
+        if (File.Exists(statePath) || DirectoryHasEntries(managedDataDir))
+            throw new IOException("Restore could not clear the managed G-REDscript-Profiler data folder. Close any process locking those files and run RESTORE ORIGINAL STATE again.");
+
+        var message = string.IsNullOrWhiteSpace(archived)
             ? "G-REDscript Profiler removed. The empty G-REDscript-Profiler data folder was intentionally left in place."
             : "G-REDscript Profiler removed. Remaining live profiler output was archived to: " + archived +
               ". The empty G-REDscript-Profiler data folder was intentionally left in place.";
+
+        if (!string.IsNullOrWhiteSpace(archiveWarning))
+            message += " Note: normal live-result archiving reported: " + archiveWarning;
+
+        return message;
     }
 
     public static string CollectLatest(string gameRoot)
@@ -622,13 +662,63 @@ internal static class ManagerServices
     private static bool DirectoryHasEntries(string path) =>
         Directory.Exists(path) && Directory.EnumerateFileSystemEntries(path).Any();
 
+    private static void DeleteFileForce(string path)
+    {
+        if (!File.Exists(path))
+            return;
+
+        try
+        {
+            File.SetAttributes(path, FileAttributes.Normal);
+        }
+        catch
+        {
+            // Deletion below remains authoritative; attribute cleanup is best effort.
+        }
+
+        File.Delete(path);
+    }
+
+    private static void DeleteDirectoryContentsForce(string path)
+    {
+        if (!Directory.Exists(path))
+            return;
+
+        foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+        {
+            try
+            {
+                File.SetAttributes(file, FileAttributes.Normal);
+            }
+            catch
+            {
+                // Directory deletion below will report any real filesystem lock.
+            }
+        }
+
+        foreach (var directory in Directory.EnumerateDirectories(path, "*", SearchOption.AllDirectories)
+                     .OrderByDescending(x => x.Length))
+        {
+            try
+            {
+                File.SetAttributes(directory, FileAttributes.Normal);
+            }
+            catch
+            {
+                // Best effort only.
+            }
+        }
+
+        DeleteDirectoryContents(path);
+    }
+
     private static void DeleteDirectoryContents(string path)
     {
         if (!Directory.Exists(path))
             return;
 
         foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.TopDirectoryOnly))
-            File.Delete(file);
+            DeleteFileForce(file);
 
         foreach (var directory in Directory.EnumerateDirectories(path, "*", SearchOption.TopDirectoryOnly))
             Directory.Delete(directory, true);
