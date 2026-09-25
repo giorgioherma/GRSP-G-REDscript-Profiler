@@ -69,7 +69,7 @@ internal static class ManagerServices
             catch (Exception ex)
             {
                 status.State = "INVALID_MANAGED_STATE";
-                status.Message = "GRSP manager state is invalid, but the ownership marker is present and RESTORE ORIGINAL STATE remains available: " + ex.Message;
+                status.Message = "GRSP manager state is invalid. Use RESTORE ORIGINAL STATE to clean up this managed installation: " + ex.Message;
             }
         }
 
@@ -84,7 +84,7 @@ internal static class ManagerServices
             else if (!string.Equals(status.InstalledHash, state.InstalledDllHash, StringComparison.OrdinalIgnoreCase))
             {
                 status.State = "MANAGED_DLL_CHANGED";
-                status.Message = "The managed G-REDscript-Profiler.dll changed after installation. Use RESTORE ORIGINAL STATE to clean the managed installation.";
+                status.Message = "The managed G-REDscript-Profiler.dll changed after installation. Use RESTORE ORIGINAL STATE to clean up this managed installation.";
             }
             else if (status.DllMatchesCurrentPackage)
             {
