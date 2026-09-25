@@ -17,7 +17,7 @@ All notable public changes to G-REDscript Profiler are recorded here.
 
 ### Results and interpretation
 
-- Rebuild `GRSP_Report.html` after collection as a CET-style human-first adaptive report while preserving the complete native CSV/developer output set.
+- Rebuild `GRSP_Report.html` after collection as a CET-style adaptive analysis report while preserving the complete native CSV/developer output set.
 - Add `GRSP_Summary.json` as the compact machine-readable interpretation layer.
 - Add sustained owner cost, call volume, hot functions, heavy script frames, recorded spikes, capture-health/trust gates and G-RedRuntime/framework analysis.
 - Add recognized CapFrameX frametime/CPU/GPU interpretation, safe frame-sequence synchronization, worst-frame evidence, slow-frame/script overlap and an interactive synchronized graph with Shift + mouse-wheel zoom.
