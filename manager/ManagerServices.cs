@@ -672,7 +672,7 @@ internal static class ManagerServices
         }
         catch
         {
-            // Deletion below remains authoritative; attribute cleanup is best effort.
+            // Deletion below is still attempted; attribute cleanup is best effort.
         }
 
         File.Delete(path);
