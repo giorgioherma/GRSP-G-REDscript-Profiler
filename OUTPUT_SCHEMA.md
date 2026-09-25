@@ -3,7 +3,7 @@
 ## Public files
 
 ### `GRSP_Report.html`
-Human-first post-capture interpretation rebuilt by the standalone manager after collection. It preserves the native measurement outputs and adds sustained workload, call-volume, hot-function, heavy-frame, spike, capture-health, G-RedRuntime/framework and optional CapFrameX correlation views.
+Post-capture analysis report rebuilt by the standalone manager after collection. It preserves the native measurement outputs and adds sustained workload, call-volume, hot-function, heavy-frame, spike, capture-health, G-RedRuntime/framework and optional CapFrameX correlation views.
 
 When frame-time data is recognized and safely aligned, the report includes a synchronized rendered-frametime / CPU Active / GPU Active / measured REDscript graph with Shift + mouse-wheel zoom.
 
