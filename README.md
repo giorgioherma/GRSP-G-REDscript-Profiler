@@ -175,7 +175,7 @@ Files owned by an external profiler are never moved, deleted, or modified at sou
 
 Restore requires Cyberpunk 2077 to be closed.
 
-If uncollected GRSP output remains, the manager attempts to archive it first. The managed DLL and managed data are then removed regardless of changes made inside that managed scope while profiling.
+If uncollected GRSP output remains, the manager attempts to archive it first. The manager then removes the GRSP-managed DLL and data.
 
 One deliberate exception remains: the final empty folder
 
