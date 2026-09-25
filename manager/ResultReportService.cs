@@ -92,20 +92,29 @@ internal static partial class ResultReportService
 
         var summary = new
         {
-            schemaVersion = "1.0",
+            schemaVersion = "1.1",
             generatedUtc = DateTime.UtcNow.ToString("O"),
+            interop = new
+            {
+                contractVersion = "1.0",
+                producer = "G-REDscript-Profiler",
+                domain = "redscript"
+            },
             scope = a.FrameTime is null
                 ? "Observed REDscript call-edge workload"
                 : "Observed REDscript call-edge workload with optional CapFrameX frametime correlation",
             capture = new
             {
                 version = a.Summary.Version,
+                title = a.Summary.Scenario,
                 scenario = a.Summary.Scenario,
                 durationSeconds = Round(a.Summary.DurationMs / 1000.0, 3),
                 frames = a.Summary.Frames,
                 measuredCalls = a.Summary.ObservedCalls,
                 callsPerSecond = Round(a.Summary.CallsPerSec, 3),
+                exclusiveMsPerSecond = Round(a.Summary.ExclusiveMsPerSec, 6),
                 exclusiveInstrumentedMsPerSecond = Round(a.Summary.ExclusiveMsPerSec, 6),
+                measuredOneCorePct = Round(a.Summary.ExclusiveMsPerSec / 10.0, 6),
                 averageScriptMsPerFrame = Round(a.Summary.AverageScriptMsPerFrame, 6),
                 p95ScriptMsPerFrame = Round(a.Summary.P95ScriptMsPerFrame, 6),
                 p99ScriptMsPerFrame = Round(a.Summary.P99ScriptMsPerFrame, 6),
@@ -128,6 +137,7 @@ internal static partial class ResultReportService
                 callsPerSecond = Round(x.CallsPerSec, 3),
                 exclusiveInstrumentedMs = Round(x.ExclusiveInstrumentedMs, 6),
                 exclusiveMsPerSecond = Round(x.ExclusiveMsPerSec, 6),
+                measuredOneCorePct = Round(x.ExclusiveMsPerSec / 10.0, 6),
                 measuredSharePct = Round(x.SharePct, 3),
                 activeFramePct = Round(x.ActiveFramePct, 3),
                 maxFrameExclusiveMs = Round(x.MaxFrameExclusiveMs, 6),
@@ -226,6 +236,7 @@ internal static partial class ResultReportService
                 x.Evidence,
                 x.Explanation
             }),
+            dataIndex = BuildDataIndex(captureRoot),
             data = EnumerateDataFiles(captureRoot)
         };
 
@@ -282,6 +293,8 @@ internal static partial class ResultReportService
             {
                 quality = ft.SyncQuality,
                 correlated = ft.Correlated,
+                exactAlignment = ft.ExactFrameAlignment,
+                alignmentMethod = ft.AlignmentMethod,
                 exactFrameAlignment = ft.ExactFrameAlignment,
                 method = ft.AlignmentMethod,
                 frameLag = ft.FrameLag,
@@ -313,6 +326,7 @@ internal static partial class ResultReportService
                 : null,
             worstFrames = ft.WorstFrames.Take(20).Select(x => new
             {
+                frameIndex = x.CapFrameIndex,
                 capFrameXIndex = x.CapFrameIndex,
                 grspFrameId = x.GrspFrameId,
                 startMs = Round(x.StartMs, 3),
@@ -633,6 +647,37 @@ internal static partial class ResultReportService
 
     private static string[] SplitPipe(string value) =>
         value.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    private static object BuildDataIndex(string captureRoot)
+    {
+        var files = EnumerateDataFiles(captureRoot).ToList();
+
+        static bool Starts(string value, string prefix) =>
+            value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+
+        var runtime = files.Where(x => Starts(x, "Data/Runtime/")).ToArray();
+        var scheduler = files.Where(x => Starts(x, "Data/Scheduler/")).ToArray();
+        var developer = files.Where(x => Starts(x, "Data/Developer/")).ToArray();
+        var metadata = files.Where(x =>
+                Starts(x, "Data/Metadata/") ||
+                x.Equals("CaptureTitle.txt", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        var frameTime = files.Where(x => Starts(x, "FrameTime/")).ToArray();
+
+        var indexed = new HashSet<string>(
+            runtime.Concat(scheduler).Concat(developer).Concat(metadata).Concat(frameTime),
+            StringComparer.OrdinalIgnoreCase);
+
+        return new
+        {
+            runtime,
+            scheduler,
+            developer,
+            metadata,
+            frameTime,
+            other = files.Where(x => !indexed.Contains(x)).ToArray()
+        };
+    }
 
     private static IEnumerable<string> EnumerateDataFiles(string captureRoot) =>
         Directory.EnumerateFiles(captureRoot, "*", SearchOption.AllDirectories)
