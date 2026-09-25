@@ -207,7 +207,7 @@ Developer\
   RSP_WorkMap.csv
 ```
 
-Open `GRSP_Report.html` first. After collection, the standalone manager rebuilds it as the human-first interpretation layer while preserving every native CSV/developer output unchanged. It adds sustained-owner and call-volume views, hot functions, script-heavy frames, recorded spikes, capture-health gates, G-RedRuntime/framework triage, and a compact machine-readable `GRSP_Summary.json`.
+Open `GRSP_Report.html` first. After collection, the standalone manager rebuilds it as the analysis report while preserving every native CSV/developer output unchanged. It adds sustained-owner and call-volume views, hot functions, script-heavy frames, recorded spikes, capture-health gates, G-RedRuntime/framework triage, and a compact machine-readable `GRSP_Summary.json`.
 
 When a recognized CapFrameX capture was copied, the report adds rendered frametime, CPU Active, GPU Active, frame-sequence synchronization, slow-frame/script overlap, recorded-spike overlap, worst-frame evidence, and a synchronized timeline. Hold **Shift** and use the mouse wheel over the graph to zoom around the pointer.
 
