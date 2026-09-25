@@ -36,12 +36,13 @@ internal static class Program
                 ?? (parsed.Has("install") ? "install" : null)
                 ?? (parsed.Has("restore") || parsed.Has("uninstall") ? "restore" : null)
                 ?? (parsed.Has("collect") ? "collect" : null)
+                ?? (parsed.Has("report") ? "report" : null)
                 ?? (parsed.Has("title") ? "title" : null)
                 ?? (parsed.Has("scenario") ? "title" : null)
                 ?? (parsed.Has("start") ? "start" : null);
 
             if (string.IsNullOrWhiteSpace(action))
-                throw new ArgumentException("Specify --action status|install|restore|collect|title|start.");
+                throw new ArgumentException("Specify --action status|install|restore|collect|report|title|start.");
 
             var gameRoot = parsed.Get("game-root") ?? parsed.Get("gameroot") ?? parsed.Get("game") ?? "";
             object result = action switch
@@ -49,7 +50,10 @@ internal static class Program
                 "status" => ManagerServices.GetStatus(gameRoot),
                 "install" => ManagerServices.Install(gameRoot),
                 "restore" or "uninstall" => new { message = ManagerServices.Restore(gameRoot) },
-                "collect" => new { path = ManagerServices.CollectLatest(gameRoot) },
+                "collect" => CollectWithReport(gameRoot),
+                "report" => BuildReport(
+                    parsed.Get("capture") ??
+                    throw new ArgumentException("--capture <folder> is required for --report.")),
                 "title" => new
                 {
                     title = ManagerServices.SaveCaptureTitle(
@@ -70,6 +74,47 @@ internal static class Program
         }
     }
 
+    private static object CollectWithReport(string gameRoot)
+    {
+        var path = ManagerServices.CollectLatest(gameRoot);
+        try
+        {
+            var report = ResultReportService.Generate(path);
+            return new
+            {
+                path,
+                report = report.ReportPath,
+                summary = report.SummaryPath,
+                reportError = (string?)null
+            };
+        }
+        catch (Exception ex)
+        {
+            // Collection already succeeded and raw data is safe. Report failure
+            // must not turn a successful archive into a destructive retry.
+            return new
+            {
+                path,
+                report = (string?)null,
+                summary = (string?)null,
+                reportError = ex.Message
+            };
+        }
+    }
+
+    private static object BuildReport(string capture)
+    {
+        var report = ResultReportService.Generate(capture);
+        return new
+        {
+            report = report.ReportPath,
+            summary = report.SummaryPath,
+            findings = report.FindingsCount,
+            frameTime = report.HasFrameTimeData,
+            frameTimeSync = report.FrameTimeSyncQuality
+        };
+    }
+
     private const string HelpText =
         "G-REDscript Profiler headless interface\n" +
         "\n" +
@@ -78,6 +123,7 @@ internal static class Program
         "  --title <name> --game <root> --json\n" +
         "  --scenario <name> is retained as a compatibility alias\n" +
         "  --collect  --game <root> --json\n" +
+        "  --report   --capture <capture-folder> --json\n" +
         "  --restore  --game <root> --json\n" +
         "  --start    --game <root> --json\n" +
         "\n" +
