@@ -897,7 +897,7 @@ internal sealed class MainForm : Form
                 }
             }
 
-            // Rebuild the same human-first report after the optional companion
+            // Rebuild the same analysis report after the optional companion
             // copy so CapFrameX can become an evidence layer without changing
             // the native REDscript measurement.
             if (Directory.Exists(destination))
