@@ -1234,12 +1234,12 @@ internal sealed class MainForm : Form
             BackColor = Color.Transparent,
             SizeMode = PictureBoxSizeMode.Zoom,
             TabStop = false,
-            Image = LoadBrandImage()
+            Image = LoadHeaderBrandImage()
         };
         return logo;
     }
 
-    private static Image? LoadBrandImage()
+    private static Image? LoadHeaderBrandImage()
     {
         try
         {
@@ -1249,7 +1249,19 @@ internal sealed class MainForm : Form
                 return null;
 
             using var source = Image.FromStream(stream);
-            return new Bitmap(source);
+            using var full = new Bitmap(source);
+
+            // The Windows icon needs the complete emblem, but the 52x52 installer
+            // header is too small for the center wordmark when the full outer
+            // braces are shown. Use a dedicated tighter presentation crop here
+            // only, keeping the executable/window icon and report branding intact.
+            var cropWidth = Math.Max(1, (int)Math.Round(full.Width * 0.64));
+            var cropHeight = Math.Max(1, (int)Math.Round(full.Height * 0.64));
+            var cropX = Math.Max(0, (full.Width - cropWidth) / 2);
+            var cropY = Math.Max(0, (full.Height - cropHeight) / 2);
+            var crop = new Rectangle(cropX, cropY, cropWidth, cropHeight);
+
+            return full.Clone(crop, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
         }
         catch
         {
