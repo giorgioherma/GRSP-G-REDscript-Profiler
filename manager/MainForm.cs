@@ -7,7 +7,7 @@ internal sealed class MainForm : Form
 {
     private readonly AppSettings appSettings = AppSettings.Load();
 
-    // Match the frozen G-CET v1.0.0 visual language exactly where the
+    // Match the G-CET v1.0.0 visual language exactly where the
     // REDscript lifecycle permits it.
     private static readonly Color ThemeBg = Color.FromArgb(8, 13, 18);
     private static readonly Color ThemePanel = Color.FromArgb(14, 23, 31);
