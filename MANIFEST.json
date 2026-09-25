@@ -105,7 +105,7 @@
   },
   "release_channel": "stable",
   "manager_ui": {
-    "visual_contract": "matches frozen G-CET v1.0.0 dark cyan/magenta shell wherever REDscript lifecycle permits",
+    "visual_contract": "matches G-CET v1.0.0 dark cyan/magenta shell wherever REDscript lifecycle permits",
     "status_contract": "white prose; green/yellow/red semantic markers only",
     "action_contract": "disabled gray; enabled forward actions cyan; enabled restore magenta",
     "dialogs": "dark themed dialogs retaining standard Windows information/warning/error/question icons"
