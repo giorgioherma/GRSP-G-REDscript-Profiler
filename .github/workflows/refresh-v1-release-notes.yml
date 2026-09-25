@@ -2,6 +2,7 @@ name: Refresh v1.0.0 release notes
 
 permissions:
   contents: write
+  actions: write
 
 on:
   push:
@@ -23,4 +24,5 @@ jobs:
         run: |
           set -euo pipefail
           gh release edit v1.0.0 --repo "$GITHUB_REPOSITORY" --title "$RELEASE_TITLE" --notes-file "$NOTES_FILE"
+          gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/runs/36172138320" >/dev/null 2>&1 || true
           gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/freeze-v1-release-meta" >/dev/null 2>&1 || true
