@@ -97,7 +97,7 @@ internal static class ManagerServices
                 status.Message = "A different managed G-REDscript Profiler build is installed. Restore it before installing this package.";
             }
         }
-        else if (status.DllPresent)
+        else if (status.DllPresent && string.IsNullOrEmpty(status.State))
         {
             if (status.DllMatchesCurrentPackage)
             {
