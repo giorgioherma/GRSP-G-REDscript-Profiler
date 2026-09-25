@@ -467,50 +467,69 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
     private static void AppendDataLinks(StringBuilder sb, string captureRoot)
     {
         sb.Append("<div class=\"section links\"><h2>Full measurement data</h2>")
-            .Append("<div class=\"note\">The report is the starting point. The original GRSP CSV outputs, developer views and copied frame-time companion data remain intact for deeper inspection and future TOTAL integration.</div>");
+            .Append("<div class=\"note\">The report and GRSP_Summary.json stay at the capture root as the stable handoff. Native profiler data is organized underneath Data/ for deeper analysis and TOTAL integration.</div>");
 
-        var groups = new[]
+        sb.Append("<div class=\"two\"><div class=\"card\"><h3>Runtime</h3>");
+        foreach (var file in RuntimeFiles.OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
         {
-            ("Public capture", new[] {"GRSP_Summary.csv","GRSP_ByMod.csv","GRSP_ByFunction.csv","GRSP_Timeline.csv","GRSP_Frames.csv","GRSP_Spikes.csv","GRSP_Markers.csv","GRSP_FrameworkCandidates.csv","GRSP_Status.txt"}),
-            ("Developer", Array.Empty<string>())
-        };
+            var path = Path.Combine(captureRoot, "Data", "Runtime", file);
+            if (!File.Exists(path))
+                continue;
 
-        sb.Append("<div class=\"two\"><div class=\"card\"><h3>Public capture</h3>");
-        foreach (var file in groups[0].Item2)
-        {
-            if (File.Exists(Path.Combine(captureRoot, file)))
-                sb.Append("<div><a href=\"").Append(Href(file)).Append("\">").Append(H(file)).Append("</a></div>");
+            var relative = "Data/Runtime/" + file;
+            sb.Append("<div><a href=\"").Append(Href(relative)).Append("\">")
+                .Append(H(file)).Append("</a></div>");
         }
+
         sb.Append("</div><div class=\"card\"><h3>Developer</h3>");
-        var dev = Path.Combine(captureRoot, "Developer");
+        var dev = Path.Combine(captureRoot, "Data", "Developer");
         if (Directory.Exists(dev))
         {
-            foreach (var path in Directory.EnumerateFiles(dev, "*", SearchOption.AllDirectories).OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+            foreach (var path in Directory.EnumerateFiles(dev, "*", SearchOption.AllDirectories)
+                         .OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
             {
                 var relative = Path.GetRelativePath(captureRoot, path).Replace('\\', '/');
-                sb.Append("<div><a href=\"").Append(Href(relative)).Append("\">").Append(H(relative)).Append("</a></div>");
+                sb.Append("<div><a href=\"").Append(Href(relative)).Append("\">")
+                    .Append(H(relative)).Append("</a></div>");
             }
         }
         else
         {
-            sb.Append("<span class=\"muted\">No Developer/ data in this capture.</span>");
+            sb.Append("<span class=\"muted\">No developer data in this capture.</span>");
         }
         sb.Append("</div></div>");
+
+        var metadata = Path.Combine(captureRoot, "Data", "Metadata");
+        if (Directory.Exists(metadata))
+        {
+            sb.Append("<details><summary>Metadata</summary>");
+            foreach (var path in Directory.EnumerateFiles(metadata, "*", SearchOption.AllDirectories)
+                         .OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+            {
+                var relative = Path.GetRelativePath(captureRoot, path).Replace('\\', '/');
+                sb.Append("<div><a href=\"").Append(Href(relative)).Append("\">")
+                    .Append(H(relative)).Append("</a></div>");
+            }
+            sb.Append("</details>");
+        }
 
         var ft = Path.Combine(captureRoot, "FrameTime");
         if (Directory.Exists(ft))
         {
             sb.Append("<details><summary>Frame-time companion files</summary>");
-            foreach (var path in Directory.EnumerateFiles(ft, "*", SearchOption.AllDirectories).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).Take(50))
+            foreach (var path in Directory.EnumerateFiles(ft, "*", SearchOption.AllDirectories)
+                         .OrderBy(x => x, StringComparer.OrdinalIgnoreCase).Take(50))
             {
                 var relative = Path.GetRelativePath(captureRoot, path).Replace('\\', '/');
-                sb.Append("<div><a href=\"").Append(Href(relative)).Append("\">").Append(H(relative)).Append("</a></div>");
+                sb.Append("<div><a href=\"").Append(Href(relative)).Append("\">")
+                    .Append(H(relative)).Append("</a></div>");
             }
             sb.Append("</details>");
         }
 
         sb.Append("<p class=\"muted\">Machine-readable condensed interpretation: <a href=\"")
-            .Append(Href(SummaryFileName)).Append("\">").Append(SummaryFileName).Append("</a>.</p></div>");
+            .Append(Href(SummaryFileName)).Append("\">").Append(SummaryFileName)
+            .Append("</a>.</p></div>");
     }
 
     private static string ShortSourcePath(string path)
