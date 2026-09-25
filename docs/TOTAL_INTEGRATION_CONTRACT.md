@@ -45,4 +45,19 @@ red4ext\plugins\G-REDscript-Profiler\RESULTS\
 
 Standalone collection verifies the archive copy and then removes the GRSP-owned live source so the game folder stays clean.
 
+The standalone archived-capture handoff is stable:
+
+```text
+<capture>/
+├─ GRSP_Report.html
+├─ GRSP_Summary.json
+├─ Data/
+│  ├─ Runtime/
+│  ├─ Developer/
+│  └─ Metadata/
+└─ FrameTime/      # optional
+```
+
+TOTAL should treat `GRSP_Summary.json` as the machine-facing entry point and may read deeper native files under `Data/` when required. This mirrors the standalone CET profiler's root-report/root-summary plus nested-data contract and avoids TOTAL-specific remapping.
+
 Files belonging to an external frame-time profiler are always copied only. Their source files are never moved, deleted or modified.
