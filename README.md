@@ -183,31 +183,42 @@ is intentionally allowed to remain after restore.
 
 Unknown or changed profiler DLLs are never blindly deleted.
 
-## Public output
+## Collected result handoff
 
-Each completed native capture contains:
+The game-side native capture is preserved, but the standalone archive is normalized to the same front-door pattern as G-CET so TOTAL receives a stable structure:
 
 ```text
-GRSP_Report.html
-GRSP_Summary.csv
-GRSP_ByMod.csv
-GRSP_ByFunction.csv
-GRSP_Timeline.csv
-GRSP_Frames.csv
-GRSP_Spikes.csv
-GRSP_Markers.csv
-GRSP_FrameworkCandidates.csv
-GRSP_Status.txt
-Developer\
-  RSP_FunctionMap.csv
-  RSP_CallSites.csv
-  RSP_SharedTargets.csv
-  RSP_Cadence.csv
-  RSP_WrapperChains.csv
-  RSP_WorkMap.csv
+Capture_0001_<TITLE>_<start_unix_ms>\
+├─ GRSP_Report.html
+├─ GRSP_Summary.json
+├─ Data\
+│  ├─ Runtime\
+│  │  ├─ GRSP_Summary.csv
+│  │  ├─ GRSP_ByMod.csv
+│  │  ├─ GRSP_ByFunction.csv
+│  │  ├─ GRSP_Timeline.csv
+│  │  ├─ GRSP_Frames.csv
+│  │  ├─ GRSP_Spikes.csv
+│  │  ├─ GRSP_Markers.csv
+│  │  └─ GRSP_FrameworkCandidates.csv
+│  ├─ Developer\
+│  │  ├─ RSP_FunctionMap.csv
+│  │  ├─ RSP_CallSites.csv
+│  │  ├─ RSP_SharedTargets.csv
+│  │  ├─ RSP_Cadence.csv
+│  │  ├─ RSP_WrapperChains.csv
+│  │  └─ RSP_WorkMap.csv
+│  └─ Metadata\
+│     ├─ GRSP_Status.txt
+│     ├─ RSP_Alpha_Status.txt
+│     ├─ RSP_SessionIndex.csv
+│     └─ other GRSP-owned collection metadata...
+└─ FrameTime\                 (optional)
+   ├─ CompanionManifest.json
+   └─ <copied frame-time capture>
 ```
 
-Open `GRSP_Report.html` first. After collection, the standalone manager rebuilds it as the analysis report while preserving every native CSV/developer output unchanged. It adds sustained-owner and call-volume views, hot functions, script-heavy frames, recorded spikes, capture-health gates, G-RedRuntime/framework triage, and a compact machine-readable `GRSP_Summary.json`.
+The two root files are the stable entry points: `GRSP_Report.html` for the results report and `GRSP_Summary.json` for machine consumption. Native measurement files are kept under `Data\`; optional external frame-time data remains under `FrameTime\`, matching the CET-side handoff shape.
 
 When a recognized CapFrameX capture was copied, the report adds rendered frametime, CPU Active, GPU Active, frame-sequence synchronization, slow-frame/script overlap, recorded-spike overlap, worst-frame evidence, and a synchronized timeline. Hold **Shift** and use the mouse wheel over the graph to zoom around the pointer.
 
