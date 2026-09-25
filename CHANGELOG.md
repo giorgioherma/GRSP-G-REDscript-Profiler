@@ -6,7 +6,7 @@ All notable public changes to G-REDscript Profiler are recorded here.
 
 ### Installer and packaging
 
-- Ported the frozen G-CET v1.0.0 dark/cyan/magenta installer shell to the standalone REDscript manager while preserving REDscript-specific capture-title and lifecycle behavior.
+- Ported the G-CET v1.0.0 dark/cyan/magenta installer shell to the standalone REDscript manager while preserving REDscript-specific capture-title and lifecycle behavior.
 - First-page setup layout now mirrors G-CET: white body text, cyan section/link accents, matching CapFrameX 1.9.1.2 Beta wording, header accents, and dark themed dialogs.
 - Profiler status keeps prose white and colors only semantic ✅ / ⚠️ / ❌ markers.
 - Disabled actions are visually gray; enabled forward actions are cyan; enabled restore remains magenta.
