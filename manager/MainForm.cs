@@ -130,14 +130,14 @@ internal sealed class MainForm : Form
             Font = new Font("Segoe UI Semibold", 18F),
             AutoSize = true,
             ForeColor = ThemeCyan,
-            Location = new Point(84, 18)
+            Location = new Point(100, 18)
         };
         var subtitle = new Label
         {
             Text = "Select Cyberpunk 2077. RED4ext is required; frame-time pairing is optional.",
             AutoSize = true,
             ForeColor = SystemColors.GrayText,
-            Location = new Point(22, 55)
+            Location = new Point(100, 52)
         };
 
         var gameGroup = new GroupBox { Text = "Cyberpunk 2077" };
@@ -341,7 +341,7 @@ internal sealed class MainForm : Form
             Font = new Font("Segoe UI Semibold", 18F),
             AutoSize = true,
             ForeColor = ThemeCyan,
-            Location = new Point(84, 18)
+            Location = new Point(100, 18)
         };
 
         var back = new Button
@@ -1218,7 +1218,7 @@ internal sealed class MainForm : Form
         var logo = new PictureBox
         {
             Location = location,
-            Size = new Size(52, 52),
+            Size = new Size(68, 68),
             BackColor = Color.Transparent,
             SizeMode = PictureBoxSizeMode.Zoom,
             TabStop = false,
@@ -1239,12 +1239,11 @@ internal sealed class MainForm : Form
             using var source = Image.FromStream(stream);
             using var full = new Bitmap(source);
 
-            // The Windows icon needs the complete emblem, but the 52x52 installer
-            // header is too small for the center wordmark when the full outer
-            // braces are shown. Use a dedicated tighter presentation crop here
-            // only, keeping the executable/window icon and report branding intact.
-            var cropWidth = Math.Max(1, (int)Math.Round(full.Width * 0.64));
-            var cropHeight = Math.Max(1, (int)Math.Round(full.Height * 0.64));
+            // The Windows icon keeps the complete emblem. The installer header uses a
+            // mild presentation crop so the outer braces stay visible while the
+            // G-RED wordmark remains large enough to read at header size.
+            var cropWidth = Math.Max(1, (int)Math.Round(full.Width * 0.90));
+            var cropHeight = Math.Max(1, (int)Math.Round(full.Height * 0.90));
             var cropX = Math.Max(0, (full.Width - cropWidth) / 2);
             var cropY = Math.Max(0, (full.Height - cropHeight) / 2);
             var crop = new Rectangle(cropX, cropY, cropWidth, cropHeight);
