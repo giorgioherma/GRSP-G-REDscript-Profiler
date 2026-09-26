@@ -119,10 +119,16 @@ Example:
 CITY_DRIVING
 ```
 
-produces a capture similar to:
+produces a native game-side capture similar to:
 
 ```text
 Capture_0001_CITY_DRIVING_<start_unix_ms>
+```
+
+When collected into the standalone package, that capture is renamed to the shared human-readable archive format:
+
+```text
+RED-YYYYMMDD-HHMMSS_CITY_DRIVING
 ```
 
 ## Existing installation rule
@@ -192,7 +198,7 @@ Unmanaged profiler DLLs are never touched.
 The game-side native capture is preserved, but the standalone archive is normalized to the same front-door pattern as G-CET so TOTAL receives a stable structure:
 
 ```text
-Capture_0001_<TITLE>_<start_unix_ms>\
+RED-YYYYMMDD-HHMMSS_<TITLE>\
 ├─ GRSP_Report.html
 ├─ GRSP_Summary.json
 ├─ Data\
