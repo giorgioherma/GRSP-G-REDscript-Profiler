@@ -435,6 +435,20 @@ internal sealed class MainForm : Form
         {
             if (busy) return;
 
+            // Restore remains the user's exit path from any manager-owned state.
+            // The only intentional runtime gate is Cyberpunk itself.
+            if (ManagerServices.IsGameRunning())
+            {
+                ThemedDialog.Show(
+                    this,
+                    "Cyberpunk 2077 is still running.\r\n\r\n" +
+                    "Close Cyberpunk 2077, then click RESTORE ORIGINAL STATE again.",
+                    Text,
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
             DialogResult answer;
             suppressActivationRefresh = true;
             try
@@ -975,14 +989,29 @@ internal sealed class MainForm : Form
         }
         catch (Exception ex)
         {
-            ShowRestoreOutcome(false, "RESTORE NOT COMPLETED — close anything locking the profiler files and retry.");
-            await SettleProfilerUiBeforeNotificationAsync();
-            ThemedDialog.Show(
-                this,
-                "Restore could not complete because a required profiler file or folder is unavailable or locked.\r\n\r\n" + ex.Message,
-                Text,
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Warning);
+            if (ManagerServices.IsGameRunning())
+            {
+                ShowRestoreOutcome(false, "RESTORE WAITING — close Cyberpunk 2077 and retry.");
+                await SettleProfilerUiBeforeNotificationAsync();
+                ThemedDialog.Show(
+                    this,
+                    "Cyberpunk 2077 is still running.\r\n\r\n" +
+                    "Close Cyberpunk 2077, then click RESTORE ORIGINAL STATE again.",
+                    Text,
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+            else
+            {
+                ShowRestoreOutcome(false, "RESTORE NOT COMPLETED — close anything locking the profiler files and retry.");
+                await SettleProfilerUiBeforeNotificationAsync();
+                ThemedDialog.Show(
+                    this,
+                    "Restore could not complete because a required profiler file or folder is unavailable or locked.\r\n\r\n" + ex.Message,
+                    Text,
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
         }
         finally
         {
