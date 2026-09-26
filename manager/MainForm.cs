@@ -123,7 +123,7 @@ internal sealed class MainForm : Form
     {
         setupPage.Dock = DockStyle.Fill;
 
-        var logo = CreateHeaderLogo(new Point(20, 5));
+        var logo = CreateHeaderLogo(new Point(20, -4));
         var title = new Label
         {
             Text = "SETUP",
@@ -334,7 +334,7 @@ internal sealed class MainForm : Form
     {
         profilerPage.Dock = DockStyle.Fill;
 
-        var logo = CreateHeaderLogo(new Point(20, 5));
+        var logo = CreateHeaderLogo(new Point(20, -4));
         var title = new Label
         {
             Text = "INSTALL -> CAPTURE -> RESTORE",
