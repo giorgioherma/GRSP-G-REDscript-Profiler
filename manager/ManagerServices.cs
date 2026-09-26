@@ -389,11 +389,56 @@ internal static class ManagerServices
         return latestDestination;
     }
 
+    private static string BuildCollectedCaptureFolderName(string source)
+    {
+        var nativeName = Path.GetFileName(
+            source.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+
+        var title = "WORLD";
+        DateTime captureTime = DateTime.Now;
+
+        if (nativeName.StartsWith("Capture_", StringComparison.OrdinalIgnoreCase))
+        {
+            var remainder = nativeName["Capture_".Length..];
+            var firstSeparator = remainder.IndexOf('_');
+            var lastSeparator = remainder.LastIndexOf('_');
+
+            if (firstSeparator >= 0 && lastSeparator > firstSeparator)
+            {
+                var rawTitle = remainder[(firstSeparator + 1)..lastSeparator];
+                try
+                {
+                    title = SafeCaptureTitle(rawTitle);
+                }
+                catch
+                {
+                    title = "WORLD";
+                }
+
+                var rawEpoch = remainder[(lastSeparator + 1)..];
+                if (long.TryParse(rawEpoch, out var startUnixMs) && startUnixMs > 0)
+                {
+                    try
+                    {
+                        captureTime = DateTimeOffset
+                            .FromUnixTimeMilliseconds(startUnixMs)
+                            .LocalDateTime;
+                    }
+                    catch
+                    {
+                        captureTime = DateTime.Now;
+                    }
+                }
+            }
+        }
+
+        return $"RED-{captureTime:yyyyMMdd-HHmmss}_{title}";
+    }
+
     private static string ArchiveDirectoryAndRemoveSource(string source)
     {
         var fingerprint = DirectoryFingerprint(source);
-        var baseName = Path.GetFileName(
-            source.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var baseName = BuildCollectedCaptureFolderName(source);
         var destination = Path.Combine(ArchiveResultsDirectory, baseName);
 
         if (Directory.Exists(destination))
