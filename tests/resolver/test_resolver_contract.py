@@ -439,6 +439,61 @@ class GrspResolverContracts(unittest.TestCase):
         self.assertEqual(0, report['stagedFiles'])
         self.assertEqual(1, report['alreadyCompleteFileCount'])
 
+    def test_generic_membership_partial_source_generates_only_missing_work(self):
+        def partial(source):
+            return source.replace(
+                '    if matched {',
+                '    let other: Bool = false;\n'
+                '    let otherAction: CName = n"beta";\n'
+                '    // GRSP-GENERIC:CNAME_ARRAY_MEMBERSHIP_V1\n'
+                '    other = ArrayContains(this.names, otherAction);\n'
+                '    if matched {')
+        self.prepare_measured_membership(partial)
+        baseline = self.source.read_bytes()
+        analyzed = self.run_cli()
+        self.assertEqual(0, analyzed.returncode, analyzed.stderr)
+        preview, folder = self.preview_generic()
+        self.assertEqual(0, preview.returncode, preview.stderr)
+        plan = json.loads((folder / 'preview.json').read_text())
+        self.assertEqual('PARTIALLY_APPLICABLE',
+                         plan['candidates'][0]['state'])
+        self.assertEqual(1, plan['stagedFiles'])
+        staged = (folder / 'overlay/r6/scripts/Example/Example.reds').read_text()
+        self.assertEqual(2, staged.count('GRSP-GENERIC:CNAME_ARRAY_MEMBERSHIP_V1'))
+        self.assertNotIn('for entry in this.names', staged)
+        self.assertEqual(baseline, self.source.read_bytes())
+
+    def test_generic_membership_refuses_corrupt_partial_marker(self):
+        def partial(source):
+            return source.replace(
+                '    if matched {',
+                '    let other: Bool = false;\n'
+                '    // GRSP-GENERIC:CNAME_ARRAY_MEMBERSHIP_V1\n'
+                '    other = false;\n'
+                '    if matched {')
+        self.prepare_measured_membership(partial)
+        analyzed = self.run_cli()
+        self.assertEqual(0, analyzed.returncode, analyzed.stderr)
+        preview, folder = self.preview_generic()
+        self.assertEqual(0, preview.returncode, preview.stderr)
+        plan = json.loads((folder / 'preview.json').read_text())
+        self.assertEqual('UNPROVEN_OR_DRIFTED',
+                         plan['candidates'][0]['state'])
+        self.assertEqual(0, plan['stagedFiles'])
+
+    def test_generic_membership_requires_cname_needle_type(self):
+        self.prepare_measured_membership(lambda text: text.replace(
+            'let actionName: CName = n"alpha";',
+            'let actionName: String = "alpha";'))
+        analyzed = self.run_cli()
+        self.assertEqual(0, analyzed.returncode, analyzed.stderr)
+        preview, folder = self.preview_generic()
+        self.assertEqual(0, preview.returncode, preview.stderr)
+        plan = json.loads((folder / 'preview.json').read_text())
+        self.assertEqual('UNPROVEN_OR_DRIFTED',
+                         plan['candidates'][0]['state'])
+        self.assertEqual(0, plan['stagedFiles'])
+
     def test_generic_membership_refuses_side_effects_in_loop(self):
         self.prepare_measured_membership(
             lambda text: text.replace('matched = true;',
