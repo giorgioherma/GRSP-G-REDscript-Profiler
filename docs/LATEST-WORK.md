@@ -38,3 +38,8 @@
 
 - [Source CI #1](https://github.com/giorgioherma/GRSP-G-REDscript-Profiler/actions/runs/43716286993) **SUCCESS**; native DLL build intentionally skipped. Since stable GRSP `main`'s existing workflow **automatically publishes v1.0.0** on push, adding an instrumentation workflow to stable `main` solely for the web Run button would be unsafe. Keep new native CI on `dev/resolver-profiler-handoff` and dispatch it by `gh workflow run native-instrumentation.yml --repo giorgioherma/GRSP-G-REDscript-Profiler --ref dev/resolver-profiler-handoff` (authenticated CLI/API, not default-branch UI). No release or source code touched by this documentation clarification.
 - GCO shared rank-reporter [CI #433](https://github.com/giorgioherma/Gs-Cyberpunk2077_Optimizations/actions/runs/43716510455) **SUCCESS**; it ranks existing native CSVs and does not yet bundle the new instrumentation DLL. Native run/capture acceptance still pending.
+
+### 2026-11-15 — source-owner strict F11 variant for GCO native artifact adoption
+
+- Implemented opt-in Cargo `gco_explicit_f11` directly in authoritative GRSP Rust source, carrying the historical GCO explicit F11 completion marker and no implicit shutdown capture. Default standalone path remains unchanged, not a second generated patch. Independent native CI release job (manual-only) now produces this variant with SHA256+source/provenance; push CI checks both default and strict variant Rust tests/compilation. 
+- GCO consumption is **pending independent manual native build** and exact SHA/sourcing; do not claim installed instrumentation or new gameplay results merely because source CI passes. Preserve GRSP `main` release unchanged. 

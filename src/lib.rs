@@ -487,10 +487,10 @@ unsafe extern "C" fn on_running_update_compat(_app: &GameApp) -> bool {
 }
 
 unsafe extern "C" fn on_shutdown(_app: &GameApp) {
-    // There is no pause/resume mode. Closing the game while recording acts as
-    // an implicit STOP so useful work is exported instead of discarded.
-    // Use a short drain window so shutdown cannot be delayed by the normal
-    // interactive STOP timeout.
+    // Standalone compatibility: a crash/shutdown can still export diagnostics.
+    // In the GCO opt-in native variant, ONLY explicit completed F11 can seal
+    // capture evidence; no implicit shutdown, crash or partial capture.
+    #[cfg(not(feature = "gco_explicit_f11"))]
     if PROFILE_STATE.load(Ordering::Acquire) == STATE_RECORDING {
         finish_capture_internal(false, 1_000);
     }
@@ -1481,6 +1481,16 @@ fn finish_capture_internal(play_stop_signal: bool, drain_wait_ms: u64) {
     let dump_ok = dump_results().is_ok();
     LAST_DUMP_OK.store(dump_ok, Ordering::Release);
     let _ = write_status_file();
+
+    // GCO's strict capture lifecycle requires this source-owned proof.
+    // Emit it ONLY after successful native developer/public CSV export from
+    // an explicit interactive F11 STOP. Never emit it on shutdown.
+    #[cfg(feature = "gco_explicit_f11")]
+    if dump_ok && play_stop_signal {
+        if let Some(dir) = capture_results_dir() {
+            let _ = fs::write(dir.join("GCO-F11-Complete.flag"), b"F11_STOP\n");
+        }
+    }
 
     if dump_ok {
         // Global export maps can be released immediately. Per-thread shards are

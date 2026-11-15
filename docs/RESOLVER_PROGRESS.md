@@ -60,3 +60,8 @@
 
 - The native release workflow remains manual-only on `dev/resolver-profiler-handoff` and its source CI #1 passed. **Do not modify stable `main`** to expose GitHub's manual UI button: its existing default workflow repackages/publishes v1.0.0 on push. Dispatch by the documented authenticated `gh workflow run native-instrumentation.yml --repo giorgioherma/GRSP-G-REDscript-Profiler --ref dev/resolver-profiler-handoff` or REST API. Native dispatch itself is not yet executed in this stage.
 - GCO report rankings are independently green in [#433](https://github.com/giorgioherma/Gs-Cyberpunk2077_Optimizations/actions/runs/43716510455) without replacing the GRSP native DLL. Next required owner evidence is manual native build with artifact hash, then a fresh real game capture of `RSP_CallbackPressure.csv` and `RSP_CallbackTargets.csv`.
+
+### 2026-11-15 — native GCO build variant source owner established
+
+- GRSP owns `gco_explicit_f11` feature code and strict F11-stop marker directly in `src/lib.rs`; default standalone shutdown diagnostics preserved. GRSP native workflow release builds this feature **only by explicit manual dispatch**, GCO will consume a verified release artifact instead of compiling feature itself.
+- Tests/CI **pending** for this change; true installed GRSP callback-entry counts and unchanged-value rates remain unknown. No REDscript optimizer source or user installation modified.

@@ -39,6 +39,10 @@ jobs:
         run: cargo test --lib --locked
       - name: Verify native Rust source compiles without optimizer rewrite hooks
         run: cargo check --locked
+      - name: Verify GCO strict-F11 native variant compiles and tests
+        run: |
+          cargo test --lib --locked --features gco_explicit_f11
+          cargo check --locked --features gco_explicit_f11
 
   native-instrumentation:
     # CET model: do not rebuild/publish a native DLL automatically on push.
@@ -53,7 +57,7 @@ jobs:
       - name: Resolve source dependencies
         run: cargo generate-lockfile
       - name: Build only source-owner native profiler DLL
-        run: cargo build --release --locked
+        run: cargo build --release --locked --features gco_explicit_f11
       - name: Verify PE DLL, callback evidence outputs and package provenance
         shell: pwsh
         run: |
@@ -65,7 +69,7 @@ jobs:
             throw 'GRSP native output is not a Windows PE binary'
           }
           $asText=[Text.Encoding]::ASCII.GetString($bytes)
-          foreach($name in @('RSP_CallbackPressure.csv','RSP_CallbackTargets.csv')) {
+          foreach($name in @('RSP_CallbackPressure.csv','RSP_CallbackTargets.csv','GCO-F11-Complete.flag')) {
             if (!$asText.Contains($name)) { throw "Native DLL does not embed developer writer $name" }
           }
           $folder='instrumentation-native-artifact'
@@ -82,7 +86,9 @@ jobs:
             sourceCommit=$source
             dllSha256=$digest
             contract='outgoing invoke edges per caller, NOT callback entries'
-            build='cargo build --release --locked'
+            nativeVariant='gco_explicit_f11'
+            strictF11StopOnly=$true
+            build='cargo build --release --locked --features gco_explicit_f11'
           } | ConvertTo-Json -Depth 4 | Set-Content "$folder/provenance.json" -Encoding utf8
           Write-Host "PASS source-owned GRSP callback instrumentation native DLL: $digest"
       - uses: actions/upload-artifact@v4

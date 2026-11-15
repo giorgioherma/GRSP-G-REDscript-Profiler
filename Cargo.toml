@@ -7,6 +7,12 @@ edition = "2024"
 name = "g_redscript_profiler"
 crate-type = ["cdylib"]
 
+# Standalone GRSP remains unchanged. The GCO native bundle explicitly enables
+# strict F11-stop-only capture completion through this source-owned feature.
+[features]
+default = []
+gco_explicit_f11 = []
+
 [dependencies]
 parking_lot = "0.12"
 static_assertions = "1"

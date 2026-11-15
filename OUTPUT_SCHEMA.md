@@ -142,3 +142,21 @@ release-mode `cargo build --release --locked`; the source-contract job runs
 first and the DLL/SHA256/provenance/Cargo.lock artifact remains isolated in
 GRSP Actions. A manual build **does not** automatically replace GCO's pinned
 v1.0.0 profiler or authorize gameplay deployment.
+
+## 2026-11-15 — GRSP-owned GCO strict-F11 native variant
+
+The GCO-native variant has its **own** source-owned Cargo feature
+`gco_explicit_f11`, default off. Source `src/lib.rs` prevents shutdown/crash
+export when the feature is enabled and only writes
+`GCO-F11-Complete.flag` = `F11_STOP` after the native CSV set was exported
+successfully on the explicit F11 STOP. This replaces the previous GCO
+checkout-time injection of these two Rust functions. Standalone GRSP
+behavior remains unchanged without the feature. GCO's existing manager
+install/restore/Collect protection remains untouched.
+
+The GRSP-only manual native CI builds this **exact** feature variant,
+and the artifact includes source commit, Cargo.lock, SHA-256, feature identity
+and explicit completion policy. GCO must consume the independently built
+artifact under a verified **opt-in** pin and must not recompile the
+instrumented GRSP DLL as a fallback. CI contract success is distinct
+from actual gameplay/capture verification.

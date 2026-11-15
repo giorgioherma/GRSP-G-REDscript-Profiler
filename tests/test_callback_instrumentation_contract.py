@@ -21,6 +21,9 @@ class CallbackInstrumentationContract(unittest.TestCase):
         self.assertGreater(body.index('callback_pressure::export(&developer_dir)?'),
                            body.index('dump_work_map_csv(&developer_dir.join("RSP_WorkMap.csv"))?'))
         self.assertIn('mod callback_pressure;', self.native)
+        self.assertIn('not(feature = "gco_explicit_f11")', self.native)
+        self.assertIn('if dump_ok && play_stop_signal', self.native)
+        self.assertIn('GCO-F11-Complete.flag', self.native)
         self.assertIn('RSP_CallbackPressure.csv', self.callback)
         self.assertIn('RSP_CallbackTargets.csv', self.callback)
 
@@ -38,6 +41,8 @@ class CallbackInstrumentationContract(unittest.TestCase):
         self.assertIn("cargo test --lib --locked", self.workflow)
         self.assertIn("cargo build --release --locked", self.workflow)
         self.assertIn("SHA256.txt", self.workflow)
+        self.assertIn("--features gco_explicit_f11", self.workflow)
+        self.assertIn("strictF11StopOnly=$true", self.workflow)
         self.assertIn("provenance.json", self.workflow)
         self.assertIn("GRSP-native-callback-instrumentation-", self.workflow)
         self.assertNotIn('GCO_', self.workflow)
