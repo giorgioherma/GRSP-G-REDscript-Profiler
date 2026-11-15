@@ -27,3 +27,9 @@
 - New post-F11-STOP developer evidence `RSP_CallbackPressure.csv` and `RSP_CallbackTargets.csv`, based entirely on original GRSP's source-bound call-edge, frame and wrapper counters. No new low-level hooks and no profiler timing overhead while recording; source hook and capture lifecycle unchanged. **Do not misinterpret outgoing calls as callback invocations.**
 - Added source/native regression contracts, independent source-test CI and **manual-only** source-owned native DLL build/publish with exact SHA256 and Rust lock provenance; existing public GRSP v1.0.0 and GCO bundle unaffected. Documentation at `OUTPUT_SCHEMA.md`.
 - Actual CI, game capture and performance acceptance pending; no REDscript generator or 61-file semantics implemented. Next: validate GRSP source CI, request manual native artifact, examine native output using fresh capture and update results/next blockers.
+
+### 2026-11-15 — independent GRSP instrumentation source CI #1 SUCCESS
+
+- [GRSP instrumentation CI #1](https://github.com/giorgioherma/GRSP-G-REDscript-Profiler/actions/runs/43716286993) **SUCCESS** at `19c90f43acbf93d9785be6ec3dfe29814d070e7d`. Validated actual Windows Rust `cargo test --lib --locked`: **2 passed, 0 failed** for callback classification and outgoing edge/frame-burst distribution; `cargo check --locked` passed; three source/lifecycle boundary contracts passed.
+- **Native release DLL build job SKIPPED by design** because the run was a push, not an explicit `workflow_dispatch`. No native instrumentation artifact, GCO update, new game capture, in-game profiler safety or REDscript gameplay proof yet. Keep manual native code build distinct from source contract CI, per CET owner model.
+- **Next:** manually dispatch the same GRSP instrumentation workflow on `dev/resolver-profiler-handoff`, verify release DLL/SHA256 and one new game capture, then evaluate true missing callback-entry/unchanged-state evidence before expanding hooks.
