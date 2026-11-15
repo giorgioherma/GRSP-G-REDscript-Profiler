@@ -122,3 +122,23 @@ DLL and emits a SHA256/provenance/Cargo.lock artifact. No native DLL is
 rebuilt/published by automatic push. Future GCO bundling must explicitly pin
 a verified owner artifact; neither GCO's stable binary nor standalone v1.0.0
 changes automatically. A green CI is not in-game profiler compatibility.
+
+### Developer native build dispatch (protected stable release)
+
+The independent instrumentation workflow exists on **GRSP's development branch**.
+GitHub's **Run workflow** website control is not necessarily available for a workflow
+absent from the repository default branch. **Do not copy development instrumentation
+source or workflows into GRSP stable `main` merely to expose that button**:
+the existing GRSP `build.yml` publishes the canonical release on `main` push.
+The workflow has already had a successful **push** run (CI #1), so use an authenticated
+GitHub CLI or REST workflow dispatch targeting the development ref:
+
+```bash
+gh workflow run native-instrumentation.yml --repo giorgioherma/GRSP-G-REDscript-Profiler --ref dev/resolver-profiler-handoff
+```
+
+Only this explicit workflow dispatch runs `native-instrumentation`'s
+release-mode `cargo build --release --locked`; the source-contract job runs
+first and the DLL/SHA256/provenance/Cargo.lock artifact remains isolated in
+GRSP Actions. A manual build **does not** automatically replace GCO's pinned
+v1.0.0 profiler or authorize gameplay deployment.
