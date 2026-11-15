@@ -139,7 +139,7 @@ class GrspResolverContracts(unittest.TestCase):
 
     def test_incomplete_grsp_status_must_not_match_complete(self):
         (self.native / "Data" / "Metadata" /
-         "GRSP_Status.txt").write_text("State: INCOMPLETE\\n")
+         "GRSP_Status.txt").write_text("State: INCOMPLETE\n")
         r = self.run_cli()
         self.assertNotEqual(0, r.returncode)
         self.assertIn("not exactly COMPLETE", r.stderr)
