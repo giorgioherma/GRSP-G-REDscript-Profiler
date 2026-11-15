@@ -140,7 +140,7 @@ internal static class Program
 
             int sourceCount = Directory.EnumerateFiles(
                 Path.Combine(gameRoot, "r6", "scripts"), "*.reds",
-                SearchOption.AllDirectories).Count();
+                System.IO.SearchOption.AllDirectories).Count();
             var top = ranks.OrderByDescending(x => x.ExclusiveInstrumentedMs)
                 .ThenByDescending(x => x.OutgoingEdgesPerSec)
                 .ThenBy(x => x.StableCallsiteId, StringComparer.Ordinal)
