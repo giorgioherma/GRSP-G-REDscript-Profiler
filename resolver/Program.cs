@@ -39,9 +39,16 @@ internal static class Program
                 throw new InvalidDataException("GCO explicit F11 completion proof is absent");
 
             string status = Path.Combine(metadata, "GRSP_Status.txt");
-            if (!File.Exists(status) ||
-                !File.ReadAllText(status).Contains("COMPLETE", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidDataException("GRSP capture is not COMPLETE");
+            if (!File.Exists(status))
+                throw new InvalidDataException("GRSP status file missing");
+            var captureStates = File.ReadLines(status)
+                .Select(line => line.Trim())
+                .Where(line => line.StartsWith("State:", StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            if (captureStates.Length != 1 ||
+                !string.Equals(captureStates[0], "State: COMPLETE",
+                    StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("GRSP capture is not exactly COMPLETE");
 
             string summaryFile = Path.Combine(nativeRoot, "GRSP_Summary.json");
             using var summaryDoc = JsonDocument.Parse(File.ReadAllText(summaryFile));
