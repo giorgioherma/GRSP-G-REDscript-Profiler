@@ -9,13 +9,13 @@
 | Stage | Status | Evidence/next gate |
 | --- | --- | --- |
 | R0 owner contract | Documentation setup | GRSP owns Resolver/Generator/compiler; GCO owns coordination/merge; verify both repo handoffs |
-| R1 61-file approved reference | NOT STARTED | Private, source-aware structural audit; no public third-party source fixtures |
+| R1 private approved reference inventory | NOT STARTED | Index 61 paths/owners/provenance only; **no semantic implementation before generics** |
 | R2 fresh capture analysis | NOT STARTED | Fresh CET+GRSP+PresentMon, full native developer CSVs, source/quality proof |
 | R3 REDscript Resolver JSON | NOT STARTED | GRSP-owned versioned JSON from real GRSP+PresentMon evidence |
 | R4 source admission | NOT STARTED | Pristine/partial/complete/drift/dependency structural states |
-| R5 first generic passes | NOT STARTED | Measured G0/G1 candidates; compile and repeat-run proof |
-| R6 targeted instrument/framework evolution | CONDITIONAL | Only for proven generic demand, native overhead and lifecycle proof |
-| R7 finite approved semantic remainder | NOT STARTED | Existing partial ZIP only; live structural proofs and compiler checks |
+| R5 source-wide measured generic passes FIRST | NOT STARTED | Fresh data → rank generic opportunities across installed mods → compile/idempotent validated pass output |
+| R6 GRSP/G-REDruntime generic enablers | CONDITIONAL | Interleave with R2–R5 as needed to unlock generic value; verify native overhead/runtime contracts |
+| R7 generic-output gap matrix then semantic remainder | BLOCKED BY GENERIC COVERAGE | After validated generics classify all 61 per operation; implement only structural SEMANTIC_REMAINDER; zero is valid |
 | R8 compile and output proof | NOT STARTED | Actual full effective stack + source-state/idempotence/negative tests |
 | R9 GCO integration | NOT STARTED | .NET10 headless contract, one CI and real output, preserve CET |
 | R10 combined ZIP/gameplay | NOT STARTED | GCO collision-safe merged ZIP, game validation, fresh before/after |
@@ -26,6 +26,13 @@
 
 - Accepted GRSP ownership; prior GCO-owned REDscript backend decision superseded. Detailed implementation plan lives in the new GCO REDscript feature branch, **not** in a duplicated GRSP blueprint.
 - Source/code changes: **none**. New GRSP optimization code, compiler execution, gameplay acceptance and fresh profiler captures: **not performed**. CET source generation last verified in GCO milestone CI #416; GCO consolidated genuine PresentMon report CI #426.
-- **Next:** confirm both repo handoffs/ledgers; then private 61-file source-state inventory and fresh GRSP evidence. No optimization generated from the old sample ZIP.
+- **Next (historical initial note; superseded by sequencing below):** private 61-file inventory is read-only only. Fresh measurements and structurally proven generic passes come before any portfolio semantic work. No optimization generated from the old sample ZIP.
 
 **MANDATORY FOR EACH FOLLOW-UP:** Append a dated entry with exact changed paths/commit, measured source/capture identity (not secrets), testing/CI run and outcome, compiler/gameplay outcome, new decisions, blockers and next single action. Update this ledger and `docs/LATEST-WORK.md` promptly, before handing off work. Record partial/red runs honestly.
+
+### 2026-11-15 — explicit generic-before-portfolio execution gate
+
+- **Owner decision:** After fresh CET/GRSP/PresentMon captures, use current full-stack source and native evidence to rank generic opportunities; develop measured reusable passes FIRST, evolving GRSP instrumentation/G-REDruntime if needed. Compile and prove actual generic output and idempotence. Then compare each operation in the 61 approved reference files with generic output and existing optimization state.
+- **R7 is strictly blocked by an R5/R6 generic coverage report** and a five-state portfolio gap matrix: `GENERIC_COVERED`, `ALREADY_PRESENT`, `SEMANTIC_REMAINDER`, `UNPROVEN_OR_DRIFTED`, `NOT_APPLICABLE`. Only remaining structurally proven approved semantic recipes can be generated. Zero residual work is acceptable; 61 modified files are not a target. R1 only indexes private metadata.
+- **Docs-only verification:** no new native GRSP measurements, generator source, compiler run, CI result or gameplay test. The existing GCO CET #416 and PresentMon reporting #426 remain unchanged prior baselines. GCO blueprint and progress ledger updated in matching GCO documentation commit `a064acf511d94d75922cf33dd295cea80513870b`.
+- **Next:** obtain fresh profiler evidence and current effective REDscript source to rank first generic opportunities; do not implement 61 semantic recipes first.
