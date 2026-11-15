@@ -1,7 +1,8 @@
 name: GRSP instrumentation evidence CI
 
 # Independent of GCO and the public GRSP release workflow. Follow the CET
-# split: regular source/contract checks; manual-only release-mode native build.
+# split: GRSP source contracts and source-owned native DLL build remain here,
+# independent from the GCO integration/packaging workflow.
 on:
   push:
     branches: [ 'dev/resolver-profiler-handoff' ]
@@ -45,9 +46,9 @@ jobs:
           cargo check --locked --features gco_explicit_f11
 
   native-instrumentation:
-    # CET model: do not rebuild/publish a native DLL automatically on push.
-    # The operator explicitly dispatches this workflow on the GRSP dev branch.
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev/resolver-profiler-handoff'
+    # Build once at the authoritative GRSP owner on every relevant dev push.
+    # GCO consumes only this SHA-verified artifact: no GCO native Rust build.
+    if: github.ref == 'refs/heads/dev/resolver-profiler-handoff'
     needs: source-contracts
     runs-on: windows-latest
     timeout-minutes: 40
