@@ -110,6 +110,45 @@ class GrspResolverContracts(unittest.TestCase):
         return subprocess.run(cmd + list(extra), capture_output=True,
                               text=True, timeout=60)
 
+    def run_source_audit(self, output=None):
+        return subprocess.run(
+            ["dotnet", str(DLL), "source-audit",
+             "--game", str(self.game), "--out", str(output or self.output)],
+            capture_output=True, text=True, timeout=90)
+
+    def test_read_only_full_source_audit_proves_no_rewrite(self):
+        before = self.source.read_bytes()
+        r = self.run_source_audit()
+        self.assertEqual(0, r.returncode, r.stderr)
+        payload = json.loads(self.output.read_text(encoding="utf-8"))
+        self.assertEqual("grsp.source.audit.v1", payload["schemaVersion"])
+        self.assertEqual(1, payload["sourceFiles"])
+        self.assertEqual(1, payload["lexicallyIndexedFiles"])
+        self.assertEqual(1, payload["recognizedFunctionSpans"])
+        self.assertEqual(0, payload["structurallyUnprovenFiles"])
+        self.assertEqual("UNSAFE_OR_UNPROVEN", payload["sourceState"])
+        self.assertFalse(payload["codeRewritten"])
+        self.assertFalse(payload["compilerValidated"])
+        self.assertFalse(payload["privateSourcePathsIncluded"])
+        self.assertEqual(before, self.source.read_bytes())
+        self.assertNotIn("Example.reds", self.output.read_text())
+
+    def test_source_audit_records_unproven_syntax_without_assuming_proof(self):
+        self.source.write_text("public class Broken {\\n")
+        r = self.run_source_audit()
+        self.assertEqual(0, r.returncode, r.stderr)
+        payload = json.loads(self.output.read_text())
+        self.assertEqual(1, payload["sourceFiles"])
+        self.assertEqual(1, payload["structurallyUnprovenFiles"])
+        self.assertEqual(0, payload["recognizedFunctionSpans"])
+        self.assertFalse(payload["compilerValidated"])
+
+    def test_source_audit_refuses_output_inside_game(self):
+        target = self.game / "audit.json"
+        r = self.run_source_audit(output=target)
+        self.assertNotEqual(0, r.returncode)
+        self.assertFalse(target.exists())
+
     def test_all_rows_preserved_and_source_match_is_not_rewrite_permission(self):
         r = self.run_cli()
         self.assertEqual(0, r.returncode, r.stderr)
