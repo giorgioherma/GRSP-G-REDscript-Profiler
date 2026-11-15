@@ -137,6 +137,14 @@ class GrspResolverContracts(unittest.TestCase):
         self.assertIn("F11", r.stderr)
         self.assertFalse(self.output.exists())
 
+    def test_incomplete_grsp_status_must_not_match_complete(self):
+        (self.native / "Data" / "Metadata" /
+         "GRSP_Status.txt").write_text("State: INCOMPLETE\\n")
+        r = self.run_cli()
+        self.assertNotEqual(0, r.returncode)
+        self.assertIn("not exactly COMPLETE", r.stderr)
+        self.assertFalse(self.output.exists())
+
     def test_corrupt_presentmon_refuses(self):
         self.mon.write_text("changed\n")
         r = self.run_cli()
