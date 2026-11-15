@@ -193,7 +193,7 @@ internal static class Program
             Directory.CreateDirectory(Path.GetDirectoryName(output)!);
             using (var stream = File.Create(output))
                 JsonSerializer.Serialize(stream, payload,
-                    new JsonSerializerOptions { WriteIndented = false });
+                    new JsonSerializerOptions { WriteIndented = false, PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
 
             Console.WriteLine($"GRSP R3/R4 PASS: {callsites.Count} callsite rows, " +
                 $"{seenIds.Count} distinct IDs, {repeatedIds} repeated-ID rows, " +
