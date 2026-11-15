@@ -78,24 +78,43 @@ class GrspResolverContracts(unittest.TestCase):
             write_csv(dev / name, ["id", "note"], [{"id": "1", "note": "x"}])
         for name in ("GRSP_ByFunction.csv", "GRSP_Frames.csv", "GRSP_ByMod.csv"):
             write_csv(runtime / name, ["id"], [{"id": "1"}])
-        write_csv(runtime / "GRSP_Markers.csv", ["event"], [
-            {"event": "START"}, {"event": "STOP_REQUEST"}])
+        write_csv(runtime / "GRSP_Markers.csv",
+                  ["event", "qpc", "unix_ms"], [
+            {"event": "START", "qpc": "10", "unix_ms": "1794754551000"},
+            {"event": "STOP_REQUEST", "qpc": "30",
+             "unix_ms": "1794754553000"}])
         mon = self.capture / "PresentMon" / "PresentMon.csv"
-        mon.parent.mkdir(parents=True)
-        mon.write_text("qpc,interval\n10,1\n20,1\n", encoding="utf-8")
+        write_csv(mon, ["Application", "CPUStartQPC", "TimeInQPC",
+                        "MsBetweenPresents", "MsCPUBusy", "MsGPUBusy",
+                        "MsGPUTime"], [
+            {"Application": "Cyberpunk2077.exe", "CPUStartQPC": "12",
+             "TimeInQPC": "13", "MsBetweenPresents": "100",
+             "MsCPUBusy": "90", "MsGPUBusy": "25", "MsGPUTime": "30"},
+            {"Application": "Cyberpunk2077.exe", "CPUStartQPC": "22",
+             "TimeInQPC": "23", "MsBetweenPresents": "100",
+             "MsCPUBusy": "90", "MsGPUBusy": "25", "MsGPUTime": "30"},
+        ])
         self.mon = mon
         chronology = {
             "schemaVersion": "gco.presentmon.chronology.v1",
             "producer": "GCO_PRESENTMON_2_6",
+            "clock": "WINDOWS_QPC_INTERPOLATED_FROM_GRSP_F11_UNIX_ANCHORS",
+            "intervalSemantics":
+                "MILLISECONDS_BETWEEN_CONSECUTIVE_PRESENT_EVENTS_NOT_DISPLAY_LATENCY",
             "correlation": "CET_GRSP_F11_INTERSECTION_VERIFIED",
+            "cetStartUnixMs": 1794754551000,
+            "overlapStartUnixMs": 1794754551000,
+            "overlapEndUnixMs": 1794754553000,
             "sourceFile": "PresentMon/PresentMon.csv",
             "sourceSha256": hashlib.sha256(mon.read_bytes()).hexdigest(),
             "sourceFrameCount": 2,
             "frames": [
-                {"sourceRow": 1, "relativeStartMs": 0.0,
-                 "intervalMs": 10.0, "presentQpc": 10},
-                {"sourceRow": 2, "relativeStartMs": 10.0,
-                 "intervalMs": 10.0, "presentQpc": 20},
+                {"sourceRow": 1, "cpuStartQpc": 12, "presentQpc": 13,
+                 "relativeStartMs": 200.0, "intervalMs": 100.0,
+                 "cpuBusyMs": 90.0, "gpuBusyMs": 25.0, "gpuTimeMs": 30.0},
+                {"sourceRow": 2, "cpuStartQpc": 22, "presentQpc": 23,
+                 "relativeStartMs": 1200.0, "intervalMs": 100.0,
+                 "cpuBusyMs": 90.0, "gpuBusyMs": 25.0, "gpuTimeMs": 30.0},
             ],
         }
         self.chronology = self.root / "chronology.json"
@@ -240,6 +259,52 @@ class GrspResolverContracts(unittest.TestCase):
         self.assertNotEqual(0, r.returncode)
         self.assertIn("hash mismatch", r.stderr)
         self.assertFalse(self.output.exists())
+
+    def test_monotonic_but_fabricated_frame_qpc_refuses(self):
+        chronology = json.loads(self.chronology.read_text())
+        chronology["frames"][0]["cpuStartQpc"] = 11
+        self.chronology.write_text(json.dumps(chronology))
+        result = self.run_cli()
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("original CSV row", result.stderr)
+        self.assertFalse(self.output.exists())
+
+    def test_changed_present_interval_refuses(self):
+        chronology = json.loads(self.chronology.read_text())
+        chronology["frames"][1]["intervalMs"] = 99.0
+        self.chronology.write_text(json.dumps(chronology))
+        result = self.run_cli()
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("original CSV row", result.stderr)
+
+    def test_fabricated_optional_cpu_busy_refuses(self):
+        chronology = json.loads(self.chronology.read_text())
+        chronology["frames"][1]["cpuBusyMs"] = 0.1
+        self.chronology.write_text(json.dumps(chronology))
+        result = self.run_cli()
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("optional metric disagrees", result.stderr)
+
+    def test_changed_native_f11_clock_refuses(self):
+        path = (self.native / "Data" / "Runtime" / "GRSP_Markers.csv")
+        write_csv(path, ["event", "qpc", "unix_ms"], [
+            {"event": "START", "qpc": "9", "unix_ms": "1794754551000"},
+            {"event": "STOP_REQUEST", "qpc": "30",
+             "unix_ms": "1794754553000"},
+        ])
+        result = self.run_cli()
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("QPC/Unix anchors", result.stderr)
+
+    def test_dropped_original_frame_refuses_even_with_valid_hash(self):
+        with self.mon.open("a", encoding="utf-8") as handle:
+            handle.write("Cyberpunk2077.exe,25,26,100,90,25,30\n")
+        chronology = json.loads(self.chronology.read_text())
+        chronology["sourceSha256"] = hashlib.sha256(self.mon.read_bytes()).hexdigest()
+        self.chronology.write_text(json.dumps(chronology))
+        result = self.run_cli()
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("omits original game frames", result.stderr)
 
     def test_unknown_frame_evidence_is_not_fake_capframex(self):
         r = self.run_cli(with_frames=False)

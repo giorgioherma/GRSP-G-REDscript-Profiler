@@ -279,55 +279,8 @@ internal static class Program
     }
 
     private static object ReadFrameEvidence(
-        Dictionary<string, string> options, string captureRoot)
-    {
-        if (!options.TryGetValue("--frame-evidence", out string? filename))
-            return new { provider = "NOT_CAPTURED", status = "NO_FRAME_EVIDENCE_PROVIDED" };
-
-        using var doc = JsonDocument.Parse(File.ReadAllText(filename));
-        var root = doc.RootElement;
-        if (root.GetProperty("schemaVersion").GetString() !=
-                "gco.presentmon.chronology.v1" ||
-            root.GetProperty("producer").GetString() != "GCO_PRESENTMON_2_6" ||
-            root.GetProperty("correlation").GetString() !=
-                "CET_GRSP_F11_INTERSECTION_VERIFIED")
-            throw new InvalidDataException("Unverified/non-PresentMon chronology");
-        string path = root.GetProperty("sourceFile").GetString() ?? "";
-        if (Path.IsPathRooted(path) || path.IndexOf('\\') >= 0 ||
-            path.Split('/').Any(x => x is "" or "." or ".."))
-            throw new InvalidDataException("Invalid frame source path");
-        string csvPath = Path.GetFullPath(Path.Combine(captureRoot,
-            path.Replace('/', Path.DirectorySeparatorChar)));
-        if (!Inside(csvPath, captureRoot) || !File.Exists(csvPath))
-            throw new InvalidDataException("Original PresentMon CSV missing");
-        string hash = root.GetProperty("sourceSha256").GetString() ?? "";
-        if (!string.Equals(hash, Sha(csvPath), StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException("PresentMon original CSV hash mismatch");
-        var frames = root.GetProperty("frames");
-        int count = root.GetProperty("sourceFrameCount").GetInt32();
-        if (frames.ValueKind != JsonValueKind.Array || count <= 0 ||
-            frames.GetArrayLength() != count)
-            throw new InvalidDataException("PresentMon frames missing or truncated");
-        double previous = double.NegativeInfinity;
-        long previousQpc = long.MinValue;
-        foreach (var frame in frames.EnumerateArray())
-        {
-            double start = frame.GetProperty("relativeStartMs").GetDouble();
-            double delta = frame.GetProperty("intervalMs").GetDouble();
-            long qpc = frame.GetProperty("presentQpc").GetInt64();
-            if (!double.IsFinite(start) || !double.IsFinite(delta) ||
-                delta < 0 || start < previous || qpc <= previousQpc)
-                throw new InvalidDataException("PresentMon chronology is non-monotonic");
-            previous = start;
-            previousQpc = qpc;
-        }
-        return new {
-            provider = "PRESENTMON_2_6",
-            intervalSemantics = "PRESENT_TO_PRESENT_NOT_DISPLAY_LATENCY",
-            observationOnly = true,
-            chronology = root.Clone()
-        };
-    }
+        Dictionary<string, string> options, string captureRoot) =>
+        PresentMonEvidence.Read(options, captureRoot);
 
     private static string Sha(string filename) =>
         Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(filename)));
