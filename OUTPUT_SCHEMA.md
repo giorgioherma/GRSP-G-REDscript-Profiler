@@ -83,3 +83,42 @@ The enhanced report places these signals beside a best-effort read-only scan of 
 Use Unix milliseconds to align capture windows between GRSP, the CET profiler and CapFrameX. Once aligned, use capture-relative milliseconds for local event inspection.
 
 GRSP's 50 ms timeline is intentionally the same granularity previously used by the CET runtime profiler project so owner activity can be compared bucket-for-bucket after aligning START markers.
+
+## 2026-11-15: developer-only callback pressure instrumentation
+
+On GRSP `dev/resolver-profiler-handoff`, the native profiler can emit two
+additional developer CSVs after F11 STOP, using its original merged InvokeStatic
+and InvokeVirtual counters. They are in `Data/Developer/`, preserving every
+original public CSV, marker, status, report and capture/restore mechanism.
+
+- `RSP_CallbackPressure.csv`: all registered `r6/scripts` functions whose
+  source method matches INPUT_ACTION, UPDATE_REFRESH, LIFECYCLE or TIMER_CALLBACK;
+  source identity, registered-but-no-outgoing-edges distinction, actual outgoing
+  call edges per second, exclusive instrumented work, active-frame coverage,
+  P95/max outgoing edges **per active game frame**, repeat-frame count, unique
+  targets, root outgoing edges, unresolved virtual/static edges, wrapper/proxy
+  edge count, and dominant target.
+- `RSP_CallbackTargets.csv`: each observed callback-family source callsite,
+  exact source/target identity and native resolution status, outgoing edge
+  rate, exclusive work, active-frame percentage, burst maximum and attribution
+  warning.
+
+**Critical measurement limit:** the native hook observes outgoing VM invokes
+whose **source caller** is a callback. It does **not** count invocations/entries
+of that callback, count incoming input events, read argument values, or establish
+unchanged-state ratios. An unobserved outgoing edge is not evidence a callback
+never ran. These CSVs cannot authorize throttling/wrapping or source rewrites
+without real source-state and lifecycle proof.
+
+**Overhead:** derived from the existing final merged native maps **after** STOP.
+No additional per-VM-invoke hook or instrumented argument read is introduced.
+
+**Separate CI:** `.github/workflows/native-instrumentation.yml` on the GRSP
+development branch, separate from GCO and standalone GRSP build/release:
+routine branch pushes run actual Windows `cargo test --lib --locked` (including
+classification/frame-burst unit tests), `cargo check` and source/lifecycle
+contracts; manual `workflow_dispatch` also compiles the release native
+DLL and emits a SHA256/provenance/Cargo.lock artifact. No native DLL is
+rebuilt/published by automatic push. Future GCO bundling must explicitly pin
+a verified owner artifact; neither GCO's stable binary nor standalone v1.0.0
+changes automatically. A green CI is not in-game profiler compatibility.

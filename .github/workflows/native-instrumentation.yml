@@ -1,0 +1,93 @@
+name: GRSP instrumentation evidence CI
+
+# Independent of GCO and the public GRSP release workflow. Follow the CET
+# split: regular source/contract checks; manual-only release-mode native build.
+on:
+  push:
+    branches: [ 'dev/resolver-profiler-handoff' ]
+    paths:
+      - '.github/workflows/native-instrumentation.yml'
+      - 'src/lib.rs'
+      - 'src/callback_pressure.rs'
+      - 'Cargo.toml'
+      - 'tests/test_callback_instrumentation_contract.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: grsp-native-instrumentation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contracts:
+    if: github.ref == 'refs/heads/dev/resolver-profiler-handoff'
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate exact source-owned instrumentation and existing F11 lifecycle
+        run: python -m unittest discover -s tests -p 'test_callback_instrumentation_contract.py' -v
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Resolve and lock the same source-owned Rust dependencies
+        run: cargo generate-lockfile
+      - name: Exercise actual Rust callback classification and frame-pressure unit tests
+        run: cargo test --lib --locked
+      - name: Verify native Rust source compiles without optimizer rewrite hooks
+        run: cargo check --locked
+
+  native-instrumentation:
+    # CET model: do not rebuild/publish a native DLL automatically on push.
+    # The operator explicitly dispatches this workflow on the GRSP dev branch.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev/resolver-profiler-handoff'
+    needs: source-contracts
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Resolve source dependencies
+        run: cargo generate-lockfile
+      - name: Build only source-owner native profiler DLL
+        run: cargo build --release --locked
+      - name: Verify PE DLL, callback evidence outputs and package provenance
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dll='target/release/g_redscript_profiler.dll'
+          if (!(Test-Path -LiteralPath $dll -PathType Leaf)) { throw 'GRSP native DLL missing' }
+          $bytes=[IO.File]::ReadAllBytes((Resolve-Path $dll))
+          if ($bytes.Length -lt 1024 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) {
+            throw 'GRSP native output is not a Windows PE binary'
+          }
+          $asText=[Text.Encoding]::ASCII.GetString($bytes)
+          foreach($name in @('RSP_CallbackPressure.csv','RSP_CallbackTargets.csv')) {
+            if (!$asText.Contains($name)) { throw "Native DLL does not embed developer writer $name" }
+          }
+          $folder='instrumentation-native-artifact'
+          New-Item -ItemType Directory -Force $folder | Out-Null
+          Copy-Item -LiteralPath $dll -Destination "$folder/G-REDscript-Profiler.dll"
+          Copy-Item -LiteralPath Cargo.lock -Destination "$folder/Cargo.lock"
+          $digest=(Get-FileHash "$folder/G-REDscript-Profiler.dll" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$digest  G-REDscript-Profiler.dll" | Set-Content "$folder/SHA256.txt" -Encoding ascii
+          $source=(git rev-parse HEAD).Trim()
+          if ($source.Length -ne 40) { throw 'Cannot establish source commit identity' }
+          @{
+            schema=1
+            producer='GRSP_NATIVE_CALLBACK_INSTRUMENTATION'
+            sourceCommit=$source
+            dllSha256=$digest
+            contract='outgoing invoke edges per caller, NOT callback entries'
+            build='cargo build --release --locked'
+          } | ConvertTo-Json -Depth 4 | Set-Content "$folder/provenance.json" -Encoding utf8
+          Write-Host "PASS source-owned GRSP callback instrumentation native DLL: $digest"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GRSP-native-callback-instrumentation-${{ github.sha }}
+          path: instrumentation-native-artifact/
+          if-no-files-found: error
+          retention-days: 30

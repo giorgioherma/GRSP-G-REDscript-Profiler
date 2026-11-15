@@ -21,3 +21,9 @@
 - **Priority hypotheses**: generic event/input router and stable device-state gate; generic source-proven UI update/unchanged-data suppression; then same-scope subsystem read reuse. Scheduler consolidation conditional. Highest nominal `FlushingEtiquette` time is largely unresolved proxy, so never blame its trivial pin logic. Exact `OnUpdate` is not shared by most owners despite broader `Update` prevalence.
 - **Proof gates outstanding:** fresh installed source-bytes; callback argument/state invariants; native proxy ownership; source-drift/partial/idempotent REDscript Generator; full compiler and actual gameplay; before/after changes. **CI NOT RUN** for documentation-only audit; no optimization generated, no native GRSP instrumentation changed.
 - **Next:** resolve source identities and target first generic family by structural evidence, then build owner-native Resolver JSON; semantics remain blocked until generic coverage.
+
+## 2026-11-15 — owner-native callback instrumentation with independent CET-style CI
+
+- New post-F11-STOP developer evidence `RSP_CallbackPressure.csv` and `RSP_CallbackTargets.csv`, based entirely on original GRSP's source-bound call-edge, frame and wrapper counters. No new low-level hooks and no profiler timing overhead while recording; source hook and capture lifecycle unchanged. **Do not misinterpret outgoing calls as callback invocations.**
+- Added source/native regression contracts, independent source-test CI and **manual-only** source-owned native DLL build/publish with exact SHA256 and Rust lock provenance; existing public GRSP v1.0.0 and GCO bundle unaffected. Documentation at `OUTPUT_SCHEMA.md`.
+- Actual CI, game capture and performance acceptance pending; no REDscript generator or 61-file semantics implemented. Next: validate GRSP source CI, request manual native artifact, examine native output using fresh capture and update results/next blockers.
