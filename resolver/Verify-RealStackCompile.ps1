@@ -102,8 +102,11 @@ try {
     # SCC 0.5.31 actual CLI: -compile <source path> <cache file>.
     # Both invocations start from identical, unmodified user-supplied base.
     $privateLog=Join-Path $work ($scenario + '-scc.log')
+    # Match RED4ext's headless compile policy: never execute VM code or
+    # generate debugger instrumentation inside an isolated CI workspace.
     $args=@('-compile',$scripts,$cache,'-Wnone','-threads','4',
-            '-no-testonly','-no-breakpoint','-profile=off')
+            '-no-testonly','-no-breakpoint','-no-exec','-no-debug',
+            '-profile=off')
     # WaitForExit is bounded; a malformed input or hung native compiler
     # must never consume an unlimited Actions runner. Read both redirected
     # streams asynchronously to avoid pipe backpressure deadlocks.
