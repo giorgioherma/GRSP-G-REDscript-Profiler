@@ -35,9 +35,10 @@ class CallbackInstrumentationContract(unittest.TestCase):
         self.assertIn('UNRESOLVED_TARGET_NO_CAUSAL_ATTRIBUTION', self.callback)
         self.assertIn('callback_frame_distribution', self.callback.replace('fn frame_pressure', 'callback_frame_distribution'))
 
-    def test_native_package_requires_manual_dispatch(self):
+    def test_native_package_requires_independent_owner_ci(self):
         self.assertIn('workflow_dispatch:', self.workflow)
-        self.assertIn("github.event_name == 'workflow_dispatch'", self.workflow)
+        self.assertIn("if: github.ref == 'refs/heads/dev/resolver-profiler-handoff'", self.workflow)
+        self.assertIn("needs: source-contracts", self.workflow)
         self.assertIn("cargo test --lib --locked", self.workflow)
         self.assertIn("cargo build --release --locked", self.workflow)
         self.assertIn("SHA256.txt", self.workflow)
