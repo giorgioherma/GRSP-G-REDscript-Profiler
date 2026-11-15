@@ -13,9 +13,12 @@ internal static class Program
     {
         try
         {
+            if (args.Length > 0 && args[0] == "source-audit")
+                return RunSourceAudit(ParseArguments(args.Skip(1).ToArray()));
             if (args.Length == 0 || args[0] != "analyze")
                 throw new ArgumentException(
-                    "Usage: GRedscript.Resolver analyze --capture <sealed capture folder> " +
+                    "Usage: GRedscript.Resolver source-audit --game <live game root> " +
+                    "--out <external JSON path> OR analyze --capture <sealed capture folder> " +
                     "--game <live game root> --out <external JSON path> " +
                     "[--frame-evidence <GCO-PresentMon-Frames.v1.json>]");
             var options = ParseArguments(args.Skip(1).ToArray());
@@ -213,6 +216,38 @@ internal static class Program
             Console.Error.WriteLine("GRSP Resolver refused: " + ex.Message);
             return 2;
         }
+    }
+
+    private static int RunSourceAudit(Dictionary<string, string> options)
+    {
+        if (options.Keys.Any(key => key is not ("--game" or "--out")))
+            throw new ArgumentException("Source audit requires only --game and --out");
+        string gameRoot = Path.GetFullPath(Required(options, "--game"));
+        string output = Path.GetFullPath(Required(options, "--out"));
+        if (Inside(output, gameRoot))
+            throw new InvalidDataException("Refusing to write source audit into the game");
+        var source = new SourceAdmission(gameRoot);
+        object result = source.AuditAll();
+        Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+        // Use a disposable file and atomic move: failures must not leave a
+        // misleading partially written successful audit.
+        string temporary = output + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            using (var stream = File.Create(temporary))
+                JsonSerializer.Serialize(stream, result,
+                    new JsonSerializerOptions {
+                        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                    });
+            File.Move(temporary, output, true);
+        }
+        finally
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
+        }
+        Console.WriteLine("GRSP source audit complete: read-only source evidence; " +
+                          "no source transformation or compiler proof");
+        return 0;
     }
 
     private static Dictionary<string, string> ParseArguments(string[] args)
