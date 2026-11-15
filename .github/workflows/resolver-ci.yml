@@ -1,0 +1,53 @@
+name: GRSP REDscript Resolver (.NET 10)
+
+# Managed Resolver CI is independent of Rust native instrumentation and the
+# standalone .NET 8 GRSP release. No native DLL or mod source is packaged here.
+on:
+  push:
+    branches: [ 'dev/resolver-profiler-handoff' ]
+    paths:
+      - 'resolver/**'
+      - 'tests/resolver/**'
+      - '.github/workflows/resolver-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: grsp-redscript-resolver-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  resolver-contracts:
+    if: github.ref == 'refs/heads/dev/resolver-profiler-handoff'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile GRSP-owned .NET 10 Resolver
+        run: dotnet build resolver/GRSP.Resolver.csproj -c Release --nologo
+      - name: Exercise real CLI and safety contracts
+        run: python -m unittest discover -s tests/resolver -p 'test_*.py' -v
+      - name: Publish framework-dependent owner CLI for future GCO integration
+        run: dotnet publish resolver/GRSP.Resolver.csproj -c Release -r win-x64 --self-contained false -p:UseAppHost=false -o resolver-publish
+      - name: Verify no .NET 8 or native component leaked into owner artifact
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $runtime = Get-Content resolver-publish/GRedscript.Resolver.runtimeconfig.json -Raw
+          if (!$runtime.Contains('"net10.0"')) { throw 'GRSP Resolver runtime is not .NET 10' }
+          if (Test-Path resolver-publish/G-REDscript-Profiler.dll) { throw 'Native GRSP DLL must not ship in managed owner artifact' }
+          if (!(Test-Path resolver-publish/GRedscript.Resolver.dll)) { throw 'Resolver CLI missing' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GRSP-Resolver-owner-net10-${{ github.sha }}
+          path: resolver-publish/
+          if-no-files-found: error
+          retention-days: 30
