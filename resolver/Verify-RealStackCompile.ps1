@@ -104,12 +104,37 @@ try {
     $privateLog=Join-Path $work ($scenario + '-scc.log')
     $args=@('-compile',$scripts,$cache,'-Wnone','-threads','4',
             '-no-testonly','-no-breakpoint','-profile=off')
-    & $tools[0].FullName @args *> $privateLog
-    $code=$LASTEXITCODE
-    if ($code -ne 0) {
-      throw ('R6_' + $scenario.ToUpperInvariant() +
-             '_SCC_FAILED: exit=' + $code + '; source diagnostics runner-private')
+    # WaitForExit is bounded; a malformed input or hung native compiler
+    # must never consume an unlimited Actions runner. Read both redirected
+    # streams asynchronously to avoid pipe backpressure deadlocks.
+    $processInfo=[System.Diagnostics.ProcessStartInfo]::new($tools[0].FullName)
+    $processInfo.UseShellExecute=$false
+    $processInfo.WorkingDirectory=$tools[0].DirectoryName
+    $processInfo.RedirectStandardOutput=$true
+    $processInfo.RedirectStandardError=$true
+    foreach($arg in $args) { [void]$processInfo.ArgumentList.Add([string]$arg) }
+    $process=[System.Diagnostics.Process]::new()
+    $process.StartInfo=$processInfo
+    try {
+      if (!$process.Start()) { throw 'R6_SCC_NATIVE_LAUNCH_FAILED' }
+      $stdoutTask=$process.StandardOutput.ReadToEndAsync()
+      $stderrTask=$process.StandardError.ReadToEndAsync()
+      if (!$process.WaitForExit(240000)) {
+        $process.Kill($true)
+        $process.WaitForExit()
+        throw ('R6_' + $scenario.ToUpperInvariant() +
+               '_SCC_TIMEOUT: native compiler exceeded 240 seconds')
+      }
+      $output=$stdoutTask.GetAwaiter().GetResult()
+      $errors=$stderrTask.GetAwaiter().GetResult()
+      [System.IO.File]::WriteAllText($privateLog, $output + [Environment]::NewLine + $errors)
+      $code=$process.ExitCode
+      if ($code -ne 0) {
+        throw ('R6_' + $scenario.ToUpperInvariant() +
+               '_SCC_FAILED: exit=' + $code + '; source diagnostics runner-private')
+      }
     }
+    finally { $process.Dispose() }
     $result=Get-Item -LiteralPath $cache
     $sha=(Get-FileHash -LiteralPath $cache -Algorithm SHA256).Hash
     if ($result.Length -lt 1048576 -or $sha -eq $baseSha) {
