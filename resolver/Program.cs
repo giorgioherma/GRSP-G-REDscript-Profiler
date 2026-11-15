@@ -15,6 +15,8 @@ internal static class Program
         {
             if (args.Length > 0 && args[0] == "source-audit")
                 return RunSourceAudit(ParseArguments(args.Skip(1).ToArray()));
+            if (args.Length > 0 && args[0] == "preview-generic")
+                return RunGenericPreview(ParseArguments(args.Skip(1).ToArray()));
             if (args.Length == 0 || args[0] != "analyze")
                 throw new ArgumentException(
                     "Usage: GRedscript.Resolver source-audit --game <live game root> " +
@@ -278,6 +280,20 @@ internal static class Program
                 "SOURCE_DRIFT_DETECTED: live REDscript source changed during Resolver analysis");
     }
 
+    private static int RunGenericPreview(Dictionary<string, string> options)
+    {
+        if (options.Keys.Any(key => key is not ("--game" or "--analysis" or "--out")))
+            throw new ArgumentException(
+                "Preview only accepts --game, --analysis and --out");
+        _ = GenericMembershipPass.Preview(
+            Path.GetFullPath(Required(options, "--game")),
+            Path.GetFullPath(Required(options, "--analysis")),
+            Path.GetFullPath(Required(options, "--out")));
+        Console.WriteLine("GRSP generic PREVIEW only: staged external source, " +
+                          "not compiled, not a deployment ZIP.");
+        return 0;
+    }
+
     private static Dictionary<string, string> ParseArguments(string[] args)
     {
         if (args.Length % 2 != 0)
@@ -285,7 +301,7 @@ internal static class Program
         var options = new Dictionary<string, string>(StringComparer.Ordinal);
         for (int i = 0; i < args.Length; i += 2)
         {
-            if (args[i] is not ("--capture" or "--game" or "--out" or "--frame-evidence" or "--expected-source-sha256"))
+            if (args[i] is not ("--capture" or "--game" or "--out" or "--analysis" or "--frame-evidence" or "--expected-source-sha256"))
                 throw new ArgumentException("Unknown Resolver option: " + args[i]);
             if (!options.TryAdd(args[i], args[i + 1]))
                 throw new ArgumentException("Duplicate Resolver option: " + args[i]);

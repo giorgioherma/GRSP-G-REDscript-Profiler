@@ -208,7 +208,12 @@ internal sealed class SourceAdmission
         return relative;
     }
 
-    private sealed record Token(string Value, int Line);
+    internal sealed record Token(string Value, int Line, int Start, int End);
+
+    // The generator reuses this exact tokenization. No parallel lexer or
+    // regex-only rewrite safety checks.
+    internal static IReadOnlyList<Token> ReadTokens(string source) =>
+        ParsedFile.Tokenize(source);
     private sealed record Method(string Name, int StartLine, int EndLine);
 
     private sealed class ParsedFile
@@ -365,7 +370,7 @@ internal sealed class SourceAdmission
                 throw new InvalidDataException("Unclosed source delimiter");
         }
 
-        private static List<Token> Tokenize(string text)
+        internal static List<Token> Tokenize(string text)
         {
             var tokens = new List<Token>();
             int line = 1;
@@ -396,6 +401,8 @@ internal sealed class SourceAdmission
                 }
                 if (c == '"' || c == '\'')
                 {
+                    int tokenStart = i;
+                    int tokenLine = line;
                     char quote = c;
                     i++;
                     bool closed = false;
@@ -413,7 +420,7 @@ internal sealed class SourceAdmission
                         i++;
                     }
                     if (!closed) throw new InvalidDataException("Unclosed string literal");
-                    tokens.Add(new Token("<literal>", line));
+                    tokens.Add(new Token("<literal>", tokenLine, tokenStart, i));
                     continue;
                 }
                 if (char.IsLetter(c) || c == '_')
@@ -421,10 +428,10 @@ internal sealed class SourceAdmission
                     int start = i++;
                     while (i < text.Length &&
                         (char.IsLetterOrDigit(text[i]) || text[i] == '_')) i++;
-                    tokens.Add(new Token(text[start..i], line));
+                    tokens.Add(new Token(text[start..i], line, start, i));
                     continue;
                 }
-                tokens.Add(new Token(c.ToString(), line));
+                tokens.Add(new Token(c.ToString(), line, i, i + 1));
                 i++;
             }
             return tokens;

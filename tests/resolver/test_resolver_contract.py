@@ -357,6 +357,133 @@ class GrspResolverContracts(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertFalse(self.output.exists())
 
+    def prepare_measured_membership(self, altered=None):
+        original = (
+            'module Example\n'
+            'public class ExampleController {\n'
+            '  public let names: array<CName>;\n'
+            '  protected cb func Work() -> Void {\n'
+            '    let matched: Bool = false;\n'
+            '    let actionName: CName = n"alpha";\n'
+            '    for entry in this.names {\n'
+            '      if Equals(entry, actionName) {\n'
+            '        matched = true;\n'
+            '        break;\n'
+            '      }\n'
+            '    }\n'
+            '    if matched { let result: Bool = true; }\n'
+            '  }\n'
+            '}\n'
+        )
+        self.source.write_text(
+            altered(original) if altered else original, encoding='utf-8')
+        native = self.native / 'Data' / 'Developer' / 'RSP_CallSites.csv'
+        with native.open(newline='', encoding='utf-8') as handle:
+            rows = list(csv.DictReader(handle))
+        for i, row in enumerate(rows):
+            row['source_line'] = '7'
+            row['source_function'] = 'Example.ExampleController::Work'
+            row['target'] = ['OperatorLess', 'OperatorAssignAdd'][i]
+            row['calls'] = ['100', '200'][i]
+            row['stable_callsite_id'] = 'RSPC-' + str(i)
+        write_csv(native, list(rows[0].keys()), rows)
+        self.write_gco_index()
+
+    def preview_generic(self, analysis=None, target=None):
+        root = target or self.root / 'preview'
+        result = subprocess.run(
+            ['dotnet', str(DLL), 'preview-generic',
+             '--game', str(self.game), '--analysis', str(analysis or self.output),
+             '--out', str(root)],
+            capture_output=True, text=True, timeout=90)
+        return result, root
+
+    def test_measured_generic_membership_is_staged_only_and_idempotent(self):
+        self.prepare_measured_membership()
+        original = self.source.read_bytes()
+        analyzed = self.run_cli()
+        self.assertEqual(0, analyzed.returncode, analyzed.stderr)
+        preview, folder = self.preview_generic()
+        self.assertEqual(0, preview.returncode, preview.stderr)
+        plan = json.loads((folder / 'preview.json').read_text())
+        self.assertEqual('grsp.generic.preview.v1', plan['schemaVersion'])
+        self.assertEqual('CNAME_ARRAY_MEMBERSHIP_V1', plan['rule'])
+        self.assertEqual(1, plan['stagedFiles'])
+        self.assertEqual(1, plan['applicableFileCount'])
+        self.assertEqual(300, plan['measuredOperatorEdgesInApplicableLoops'])
+        self.assertEqual('PRISTINE_APPLICABLE',
+                         plan['candidates'][0]['state'])
+        self.assertFalse(plan['deployable'])
+        self.assertFalse(plan['generationAuthorized'])
+        self.assertFalse(plan['compilerValidated'])
+        staged = folder / 'overlay/r6/scripts/Example/Example.reds'
+        transformed = staged.read_text()
+        self.assertIn('matched = ArrayContains(this.names, actionName);',
+                      transformed)
+        self.assertIn('GRSP-GENERIC:CNAME_ARRAY_MEMBERSHIP_V1', transformed)
+        self.assertNotIn('for entry in this.names', transformed)
+        self.assertEqual(original, self.source.read_bytes())
+
+        # Simulate a partially/fully optimized installed stack. A fresh
+        # authoritative evidence analysis of that current source must see
+        # verified completed structure and propose zero additional files.
+        self.source.write_bytes(staged.read_bytes())
+        self.output.unlink()
+        analyzed = self.run_cli()
+        self.assertEqual(0, analyzed.returncode, analyzed.stderr)
+        second, secondFolder = self.preview_generic(
+            target=self.root / 'second')
+        self.assertEqual(0, second.returncode, second.stderr)
+        report = json.loads((secondFolder / 'preview.json').read_text())
+        self.assertEqual('ALREADY_COMPLETE', report['candidates'][0]['state'])
+        self.assertEqual(0, report['stagedFiles'])
+        self.assertEqual(1, report['alreadyCompleteFileCount'])
+
+    def test_generic_membership_refuses_side_effects_in_loop(self):
+        self.prepare_measured_membership(
+            lambda text: text.replace('matched = true;',
+                                      'DoSomething();\n        matched = true;'))
+        analyzed = self.run_cli()
+        self.assertEqual(0, analyzed.returncode, analyzed.stderr)
+        preview, folder = self.preview_generic()
+        self.assertEqual(0, preview.returncode, preview.stderr)
+        plan = json.loads((folder / 'preview.json').read_text())
+        self.assertEqual(0, plan['stagedFiles'])
+        self.assertEqual('UNPROVEN_OR_DRIFTED',
+                         plan['candidates'][0]['state'])
+
+    def test_generic_membership_refuses_nonfalse_initial_flag(self):
+        self.prepare_measured_membership(
+            lambda text: text.replace('let matched: Bool = false;',
+                                      'let matched: Bool = true;'))
+        analyzed = self.run_cli()
+        self.assertEqual(0, analyzed.returncode, analyzed.stderr)
+        preview, folder = self.preview_generic()
+        self.assertEqual(0, preview.returncode, preview.stderr)
+        plan = json.loads((folder / 'preview.json').read_text())
+        self.assertEqual(0, plan['stagedFiles'])
+        self.assertEqual('UNPROVEN_OR_DRIFTED',
+                         plan['candidates'][0]['state'])
+
+    def test_generic_membership_refuses_analysis_to_source_drift(self):
+        self.prepare_measured_membership()
+        analyzed = self.run_cli()
+        self.assertEqual(0, analyzed.returncode, analyzed.stderr)
+        self.source.write_text(self.source.read_text() + '// changed\n')
+        preview, folder = self.preview_generic()
+        self.assertNotEqual(0, preview.returncode)
+        self.assertIn('SOURCE_DRIFT_DETECTED', preview.stderr)
+        self.assertFalse(folder.exists())
+
+    def test_generic_preview_refuses_writes_to_live_game(self):
+        self.prepare_measured_membership()
+        analyzed = self.run_cli()
+        self.assertEqual(0, analyzed.returncode, analyzed.stderr)
+        original = self.source.read_bytes()
+        preview, _ = self.preview_generic(target=self.game / 'bad-preview')
+        self.assertNotEqual(0, preview.returncode)
+        self.assertEqual(original, self.source.read_bytes())
+
     def test_missing_f11_completion_refuses(self):
         (self.native / "Data" / "Metadata" /
          "GCO-F11-Complete.flag").unlink()
