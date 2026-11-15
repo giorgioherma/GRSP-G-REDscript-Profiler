@@ -2,10 +2,19 @@
 
 **Development branch:** `dev/resolver-profiler-handoff`. **Release baseline:** `main` (GRSP 1.0.0), kept unchanged.
 
-## Decision (2026-11-04)
+## Approved ownership and REDscript development (2026-11-15)
+
+- **GRSP owns REDscript instrumentation, the new REDscript Resolver, generic-first source-aware Generator, and full-stack REDscript compilation validation.** This supersedes the older GCO-owned Resolver/Generator language below. Work only on GRSP `dev/resolver-profiler-handoff`; `main` and GRSP 1.0.0 stable behavior remain unchanged.
+- **GCO owns only cross-domain planning, verified sealed evidence transport, actual PresentMon-backed consolidated reports, invoking CET/GRSP headless owner interfaces, and the final combined game-relative ZIP.** No duplicate REDscript parser/generator in GCO. GCO development branch: `feature/redscript-resolver-integration`, branched from its completed CET/PresentMon integration feature; GCO `main` stays protected.
+- **Canonical reviewed blueprint:** [GRSP-owned REDscript Resolver blueprint](https://github.com/giorgioherma/Gs-Cyberpunk2077_Optimizations/blob/feature/redscript-resolver-integration/docs/integration/GRSP_REDscript_Resolver_Blueprint.md); [GCO progress ledger](https://github.com/giorgioherma/Gs-Cyberpunk2077_Optimizations/blob/feature/redscript-resolver-integration/docs/integration/REDSCRIPT-RESOLVER-PROGRESS.md); [GRSP owner progress ledger](RESOLVER_PROGRESS.md). Read before editing. The 61-file gameplay-verified partial reference is the *only currently approved mod-specific semantic portfolio*; source proofs, fresh captures and full compiler validation still govern applicability.
+- **Agents must promptly update** `docs/RESOLVER_PROGRESS.md` and `docs/LATEST-WORK.md` in the same development change (or immediately after exact CI completion) with commit SHA, contracts/results, stage status, decisions, failures, source/gameplay/compile proof and next step. On ownership or interface changes, update this handoff and GCO decisions/progress as well. Never mark CI green or gameplay verified without exact evidence.
+- Fresh CET + GRSP + PresentMon captures select and prioritize generic opportunities; GCO supplies genuine `PRESENTMON_2_6` chronology, or `NOT_CAPTURED` when absent. Keep standalone GRSP optional CapFrameX compatibility; do not fabricate or fall back to CapFrameX in GCO. GRSP and CET CPU domains are not additive.
+- Do not begin source rewriting until source-state admission and measurements support it. No silent live game writes, fixed mod inventory, broad semantic catalog, source-format regex guessing, duplicate patches, or mandatory framework dependency unless proven.
+
+## Historical initial decision (2026-11-04; ownership corrected above)
 
 - Build **one unified user-facing Resolver** for CET and REDscript, with **separate source-aware optimization backends**. Do not transplant REDscript parsing/compilation into the CET Lua/0-Engine generator.
-- CET remains owned by `giorgioherma/G-CET_Runtime_Profiler` and its authoritative `dev/resolver-profiler-handoff` branch. GRSP remains the authoritative REDscript *measurement* producer; `G-REDruntime_Framework` owns its runtime modules. The future unified app owns orchestration and REDscript Resolver backend integration, while invoking or adapting the existing CET Resolver rather than duplicating it.
+- CET remains owned by `giorgioherma/G-CET_Runtime_Profiler` and its authoritative `dev/resolver-profiler-handoff` branch. GRSP owns REDscript measurements **and** its source-aware Resolver/Generator and compiler validation; `G-REDruntime_Framework` owns optional runtime modules. The existing GCO app invokes the separate CET and GRSP owner backends; it does not reimplement their optimizers.
 - REDscript default is **generic optimization only**. Do not build an extensive semantic rule catalog. Optional user-selected stack-specific semantics may be developed later with explicit source and gameplay proof.
 - The old TOTAL Profiler is historical UI/capture-correlation reference, **not** an authoritative CET component or dependency. No legacy CET binaries or installers are carried forward.
 - Source inputs are the user's *current installed* `r6/scripts` tree (read-only). An older GRSP capture is supporting evidence, never proof that a mod is currently installed. Do not distribute original third-party mod sources.
@@ -42,6 +51,6 @@ Preserve callback order, native/REDscript execution cadence, return and side eff
 
 ## First development checkpoint
 
-Audit the **existing complete GRSP raw outputs** against the information needed for the first one or two source-proven generic rule families. Add only the demonstrably missing instrumentation in this GRSP branch, with regression tests and proof of bounded recording overhead. Leave `main`, public 1.0.0 release and the G-REdruntime `main` unchanged. New unified-app repository and REDscript generator source are **not yet created**.
+Audit the **existing complete GRSP raw outputs** against the information needed for the first one or two source-proven generic rule families. Add only the demonstrably missing instrumentation in this GRSP branch, with regression tests and proof of bounded recording overhead. Leave `main`, public 1.0.0 release and the G-REdruntime `main` unchanged. The unified GCO app and its REDscript development branch **already exist**; the GRSP REDscript Resolver/Generator implementation is **not yet created**.
 
 **Status:** architecture and handoff recorded; no new profiler instrumentation or REDscript optimization has yet been implemented, compiled or gameplay-validated.
