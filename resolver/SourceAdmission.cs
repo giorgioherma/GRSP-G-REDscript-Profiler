@@ -125,7 +125,12 @@ internal sealed class SourceAdmission
             return new("LINE_OUTSIDE_FILE", relative, sourceLine, null, parsed.Sha256,
                 "Captured line is outside the current source file");
 
-        string shortName = sourceFunction.Split("::").LastOrDefault() ?? "";
+        // REDscript methods use Type::Method, while module-level functions
+        // use Module.Function. Compare only the declared function identifier;
+        // namespace/receiver binding remains deliberately UNVERIFIED.
+        string shortName = sourceFunction.Contains("::", StringComparison.Ordinal)
+            ? sourceFunction.Split("::").LastOrDefault() ?? ""
+            : sourceFunction.Split('.').LastOrDefault() ?? "";
         if (shortName.Contains("wrapper$", StringComparison.OrdinalIgnoreCase) ||
             shortName.Contains("proxy$", StringComparison.OrdinalIgnoreCase))
             return new("UNRESOLVED_WRAPPER", relative, sourceLine, null, parsed.Sha256,

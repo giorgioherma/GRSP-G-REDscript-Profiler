@@ -133,6 +133,31 @@ class GrspResolverContracts(unittest.TestCase):
         self.assertEqual(before, self.source.read_bytes())
         self.assertNotIn("Example.reds", self.output.read_text())
 
+    def test_module_qualified_free_function_is_mapped_read_only(self):
+        self.source.write_text(
+            'module Example\n'
+            'public func Standalone() -> Int32 {\n'
+            '  return 3;\n'
+            '}\n', encoding='utf-8')
+        callsites = (self.native / 'Data' / 'Developer' /
+                     'RSP_CallSites.csv')
+        with callsites.open(newline='', encoding='utf-8') as handle:
+            rows = list(csv.DictReader(handle))
+        for row in rows:
+            row['source_function'] = 'Example.Standalone'
+            row['source_line'] = '3'
+        write_csv(callsites, list(rows[0].keys()), rows)
+        result = self.run_cli()
+        self.assertEqual(0, result.returncode, result.stderr)
+        report = json.loads(self.output.read_text(encoding='utf-8'))
+        for observation in report['sourceObservations']:
+            self.assertEqual(
+                'LINE_METHOD_NAME_MATCH_RECEIVER_UNVERIFIED',
+                observation['evidence']['status'])
+            self.assertEqual('UNSAFE_OR_UNPROVEN',
+                             observation['evidence']['transformationState'])
+        self.assertFalse(report['generationAuthorized'])
+
     def test_source_audit_records_unproven_syntax_without_assuming_proof(self):
         self.source.write_text("public class Broken {\n")
         r = self.run_source_audit()
