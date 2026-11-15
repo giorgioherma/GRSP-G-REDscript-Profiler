@@ -68,8 +68,24 @@ function Invoke-HeadlessScc {
       throw ('R6_HEADLESS_SCC_EVIDENCE_INVALID: phase='+$Phase)
     }
     if ($p.ExitCode -ne 0 -or $result.success -ne $true) {
-      $codes=@($result.errorCodeCounts.PSObject.Properties | ForEach-Object { $_.Name+'='+$_.Value }) -join ','
-      throw ('R6_HEADLESS_SCC_COMPILATION_FAILED: phase='+$Phase+' errorCodes='+$codes+' diagnosticBytes='+$result.diagnosticBytes+' rawErrorsRunnerPrivate=true')
+      # Native flexi_logger files are closed now, after the DLL-hosting
+      # dotnet process exited. Extract codes only; never print script paths
+      # or upload raw private compiler diagnostics.
+      $codes=@($result.errorCodeCounts.PSObject.Properties | ForEach-Object { $_.Name+'='+$_.Value })
+      $nativeCodes=@()
+      foreach($file in @(Get-ChildItem -LiteralPath (Join-Path $r6 'logs') -Filter 'redscript*.log' -File)) {
+        $content=Get-Content -LiteralPath $file.FullName -Raw
+        foreach($match in [regex]::Matches($content,'\[[A-Z][A-Z0-9_]+\]')) {
+          if ($match.Value -notin @('[INFO]','[WARN]','[ERROR]','[DEBUG]','[TRACE]')) {
+            $nativeCodes+=@($match.Value)
+          }
+        }
+      }
+      if ($nativeCodes.Count -gt 0) {
+        $codes=@($nativeCodes | Group-Object | Sort-Object Name | ForEach-Object { $_.Name+'='+$_.Count })
+      }
+      $safeCodes=if($codes.Count -gt 0){$codes -join ','}else{'NO_STRUCTURED_ERROR_CODES'}
+      throw ('R6_HEADLESS_SCC_COMPILATION_FAILED: phase='+$Phase+' errorCodes='+$safeCodes+' diagnosticBytes='+$result.diagnosticBytes+' rawErrorsRunnerPrivate=true')
     }
     if ($result.generatedOutputPresent -ne $true -or
         [long]$result.generatedOutputBytes -lt 1048576) {

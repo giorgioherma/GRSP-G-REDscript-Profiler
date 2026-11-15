@@ -144,18 +144,13 @@ internal static class HeadlessScc
 
         // Error may contain private mod paths and source lines; it stays only
         // on the private CI runner. Public CI prints counts/types, not paths.
-        // The official C ABI intentionally returns a *user-facing* error
-        // summary listing source owners, not compiler diagnostic codes.
-        // The same SCC library writes actual diagnostic codes to r6/logs.
-        // Read these only inside the isolated workspace, retain the full
-        // source-bearing text in runner-private --log and publish counts only.
-        string compilerLogs = string.Join("\n",
-            Directory.EnumerateFiles(Path.Combine(r6, "logs"), "redscript*.log")
-                .Where(file => new FileInfo(file).Length <= 8 * 1024 * 1024)
-                .Select(File.ReadAllText));
-        string details = error + "\n" + compilerLogs;
-        File.WriteAllText(log, details, new UTF8Encoding(false));
-        var codeCounts = Regex.Matches(details, @"\[[A-Z][A-Z0-9_]+\]")
+        // The native logger owns its file handle until SCC exits. Never
+        // read those logs from inside the DLL-hosting process on Windows:
+        // file-sharing locks can turn successful compilation into failure.
+        // The GRSP CI owner runner extracts error codes AFTER this process
+        // exits and the handles are released, without publishing paths.
+        File.WriteAllText(log, error, new UTF8Encoding(false));
+        var codeCounts = Regex.Matches(error, @"\[[A-Z][A-Z0-9_]+\]")
             .Select(m => m.Value)
             .Where(code => code is not ("[INFO]" or "[WARN]" or "[ERROR]" or
                 "[DEBUG]" or "[TRACE]"))
@@ -171,7 +166,7 @@ internal static class HeadlessScc
             generatedOutputBytes = File.Exists(output) ? new FileInfo(output).Length : 0,
             errorCodeCounts = codeCounts,
             diagnosticBytes = Encoding.UTF8.GetByteCount(error),
-            nativeCompilerLogBytes = Encoding.UTF8.GetByteCount(compilerLogs),
+            nativeCompilerLogDeferredUntilProcessExit = true,
             compilerDiagnosticCodesFound = codeCounts.Values.Sum(),
             elapsedSeconds = Math.Round(started.Elapsed.TotalSeconds, 2),
             gameValidated = false,
