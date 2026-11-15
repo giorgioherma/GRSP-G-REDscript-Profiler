@@ -4,7 +4,7 @@ param(
   [Parameter(Mandatory=$true)][string]$PreviewRoot,
   [Parameter(Mandatory=$true)][string]$CompilerArchive,
   [Parameter(Mandatory=$true)][string]$CleanBaselineArchive,
-  [Parameter(Mandatory=$true)][string]$EffectiveCacheFile,
+  [Parameter(Mandatory=$true)][string]$EffectiveCacheArchive,
   [Parameter(Mandatory=$true)][string]$ResolverDll
 )
 $ErrorActionPreference='Stop'
@@ -13,7 +13,7 @@ $game=(Resolve-Path -LiteralPath $GameRoot).Path
 $preview=(Resolve-Path -LiteralPath $PreviewRoot).Path
 $compilerZip=(Resolve-Path -LiteralPath $CompilerArchive).Path
 $baselineZip=(Resolve-Path -LiteralPath $CleanBaselineArchive).Path
-$effectivePath=(Resolve-Path -LiteralPath $EffectiveCacheFile -ErrorAction Stop).Path
+$effectiveZip=(Resolve-Path -LiteralPath $EffectiveCacheArchive -ErrorAction Stop).Path
 $dll=(Resolve-Path -LiteralPath $ResolverDll).Path
 $plan=Get-Content -LiteralPath (Join-Path $preview 'preview.json') -Raw | ConvertFrom-Json -Depth 80
 if ($plan.schemaVersion -ne 'grsp.generic.preview.v1' -or
@@ -102,9 +102,11 @@ New-Item -ItemType Directory -Path $work -Force | Out-Null
 try {
   $compilerRoot=Join-Path $work 'compiler'
   $baselineRoot=Join-Path $work 'supplied-base'
-  New-Item -ItemType Directory -Path @($compilerRoot,$baselineRoot) -Force | Out-Null
+  $effectiveRoot=Join-Path $work 'supplied-effective-cache'
+  New-Item -ItemType Directory -Path @($compilerRoot,$baselineRoot,$effectiveRoot) -Force | Out-Null
   Expand-Archive -LiteralPath $compilerZip -DestinationPath $compilerRoot -ErrorAction Stop
   Expand-Archive -LiteralPath $baselineZip -DestinationPath $baselineRoot -ErrorAction Stop
+  Expand-Archive -LiteralPath $effectiveZip -DestinationPath $effectiveRoot -ErrorAction Stop
   $tools=@(Get-ChildItem -LiteralPath $compilerRoot -Recurse -File -Filter 'scc.exe')
   $libs=@(Get-ChildItem -LiteralPath $compilerRoot -Recurse -File -Filter 'scc_lib.dll')
   $bases=@(Get-ChildItem -LiteralPath $baselineRoot -Recurse -File | Where-Object Name -eq 'final.redscripts')
@@ -159,11 +161,14 @@ try {
   # Treat the private upload as a *candidate*, not an authenticated vanilla
   # cache. A previously compiled .modded bundle is never silently reused as
   # source: SCC's official REDSCRIPT_SIGNATURE guard decides admissibility.
-  $effectiveFile=Get-Item -LiteralPath $effectivePath -ErrorAction Stop
-  if (!$effectiveFile.Exists -or $effectiveFile.PSIsContainer -or
-      $effectiveFile.Name -cne 'final.redscripts' -or
-      ($effectiveFile.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
-    throw 'R6_EFFECTIVE_CACHE_INPUT_INVALID: expected a regular, raw final.redscripts file (not .modded or ZIP)'
+  $effectiveEntries=@(Get-ChildItem -LiteralPath $effectiveRoot -Recurse -File)
+  $effectiveFiles=@($effectiveEntries | Where-Object Name -CEQ 'final.redscripts')
+  if ($effectiveFiles.Count -ne 1 -or $effectiveEntries.Count -ne 1) {
+    throw ('R6_EFFECTIVE_CACHE_ARCHIVE_INVALID: expected exactly one final.redscripts file, found='+$effectiveEntries.Count+' correctNamed='+$effectiveFiles.Count)
+  }
+  $effectiveFile=$effectiveFiles[0]
+  if ($effectiveFile.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+    throw 'R6_EFFECTIVE_CACHE_REPARSE_POINT_REFUSED'
   }
   if ($effectiveFile.Length -lt 1048576) {
     throw 'R6_EFFECTIVE_CACHE_TOO_SMALL: cannot use as game cache input'
