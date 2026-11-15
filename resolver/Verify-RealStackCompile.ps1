@@ -90,10 +90,24 @@ function Invoke-HeadlessScc {
       # Never print the underlying private source or path. The native error
       # is retained only as an isolated-runner diagnostic.
       $safeUnresolved='NOT_IDENTIFIED'
-      $privateText=Get-Content -LiteralPath $privateLog -Raw
-      $tokens=[regex]::Matches($privateText,'UNRESOLVED_REF[^\r\n]*')
-      if ($tokens.Count -gt 0) { $safeUnresolved='ONE_UNRESOLVED_REFERENCE' }
-      throw ('R6_HEADLESS_SCC_COMPILATION_FAILED: phase='+$Phase+' errorCodes='+$safeCodes+' diagnosticBytes='+$result.diagnosticBytes+' rawErrorsRunnerPrivate=true')
+      if (Test-Path -LiteralPath $privateLog -PathType Leaf) {
+        $diagnosticLines=@(Get-Content -LiteralPath $privateLog)
+        for($i=1; $i -lt $diagnosticLines.Count; $i++) {
+          $underline=[string]$diagnosticLines[$i]
+          $start=$underline.IndexOf('^')
+          if ($start -lt 0) { continue }
+          $sourceLine=[string]$diagnosticLines[$i-1]
+          if ($start -ge $sourceLine.Length) { continue }
+          $end=$start
+          while($end -lt $underline.Length -and $underline[$end] -eq '^') { $end++ }
+          $candidate=$sourceLine.Substring($start,[Math]::Min($end-$start,$sourceLine.Length-$start)).Trim()
+          if ($candidate -cmatch '^[A-Za-z_][A-Za-z0-9_]{0,100}$') {
+            $safeUnresolved=$candidate
+            break
+          }
+        }
+      }
+      throw ('R6_HEADLESS_SCC_COMPILATION_FAILED: phase='+$Phase+' errorCodes='+$safeCodes+' unresolvedIdentifier='+$safeUnresolved+' diagnosticBytes='+$result.diagnosticBytes+' rawErrorsRunnerPrivate=true')
     }
     if ($result.generatedOutputPresent -ne $true -or
         [long]$result.generatedOutputBytes -lt 1048576) {
