@@ -22,6 +22,50 @@ if ($plan.schemaVersion -ne 'grsp.generic.preview.v1' -or
     [int]$plan.stagedFiles -lt 1) {
   throw 'R6 requires real structurally proven, nondeployable GRSP source preview.'
 }
+# One native invocation implementation for both the smoke and full-source gates.
+# Logs stay on the private runner; never publish third-party source paths.
+function Invoke-GenuineScc {
+  param(
+    [string]$Executable, [string[]]$Arguments, [string]$Phase,
+    [string]$LogPath, [int]$TimeoutSeconds
+  )
+  $info=[System.Diagnostics.ProcessStartInfo]::new($Executable)
+  $info.UseShellExecute=$false
+  $info.WorkingDirectory=Split-Path $Executable -Parent
+  $info.RedirectStandardOutput=$true
+  $info.RedirectStandardError=$true
+  foreach($arg in $Arguments) { [void]$info.ArgumentList.Add([string]$arg) }
+  $p=[System.Diagnostics.Process]::new()
+  $p.StartInfo=$info
+  $watch=[System.Diagnostics.Stopwatch]::StartNew()
+  try {
+    if (!$p.Start()) { throw ('R6_SCC_LAUNCH_FAILED: phase='+$Phase) }
+    $stdout=$p.StandardOutput.ReadToEndAsync()
+    $stderr=$p.StandardError.ReadToEndAsync()
+    $exited=$p.WaitForExit($TimeoutSeconds*1000)
+    if (!$exited) { $p.Kill($true); $p.WaitForExit() }
+    $out=$stdout.GetAwaiter().GetResult()
+    $err=$stderr.GetAwaiter().GetResult()
+    [System.IO.File]::WriteAllText($LogPath,$out+[Environment]::NewLine+$err)
+    $cpu=[Math]::Round($p.TotalProcessorTime.TotalSeconds,1)
+    $peak=[Math]::Round($p.PeakWorkingSet64/1MB,1)
+    $code=if($exited){[string]$p.ExitCode}else{'TIMEOUT'}
+    Write-Host ('R6 SCC diag: phase='+$Phase+' seconds='+
+      [Math]::Round($watch.Elapsed.TotalSeconds,1)+' cpuSeconds='+$cpu+
+      ' peakMB='+$peak+' stdoutChars='+$out.Length+
+      ' stderrChars='+$err.Length+' exit='+$code)
+    if (!$exited) {
+      throw ('R6_SCC_TIMEOUT: phase='+$Phase+' limit='+$TimeoutSeconds+
+        's cpuSeconds='+$cpu+' peakMB='+$peak+'; private SCC log not uploaded')
+    }
+    if ($p.ExitCode -ne 0) {
+      throw ('R6_SCC_FAILED: phase='+$Phase+' exit='+$p.ExitCode+
+        '; private SCC log not uploaded')
+    }
+  }
+  finally { $watch.Stop(); $p.Dispose() }
+}
+
 $work=Join-Path $env:RUNNER_TEMP ('grsp-r6-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $work -Force | Out-Null
 try {
@@ -67,6 +111,19 @@ try {
       throw 'R6 staged overlay contains an unsafe non-REDscript source.'
     }
   }
+  # Fast executable and vanilla-cache probe before thousands of mod sources.
+  # SCC reads final.redscripts and writes its distinct .modded sibling.
+  $smokeScripts=Join-Path $work 'smoke/r6/scripts'
+  $smokeCache=Join-Path $work 'smoke/r6/cache/final.redscripts'
+  New-Item -ItemType Directory -Force -Path @($smokeScripts,(Split-Path $smokeCache -Parent)) | Out-Null
+  Copy-Item -LiteralPath $baseFile.FullName -Destination $smokeCache -Force
+  Invoke-GenuineScc -Executable $tools[0].FullName -Arguments @('-compile',$smokeScripts,$smokeCache) -Phase 'empty-source-smoke' -LogPath (Join-Path $work 'smoke-scc.log') -TimeoutSeconds 35
+  $smokeModded=$smokeCache+'.modded'
+  $smokeOriginal=(Get-FileHash -LiteralPath $smokeCache -Algorithm SHA256).Hash
+  if ($smokeOriginal -ne $baseSha -or !(Test-Path -LiteralPath $smokeModded -PathType Leaf) -or (Get-Item -LiteralPath $smokeModded).Length -lt 1048576) {
+    throw 'R6 SCC smoke must preserve vanilla cache and emit a .modded compiled bundle.'
+  }
+  Write-Host ('PASS GRSP SCC 0.5.31 empty-source smoke: baselineUnchanged=true moddedBytes='+(Get-Item -LiteralPath $smokeModded).Length)
   $outputs=@()
   foreach($scenario in @('untouched','optimized-preview')) {
     $root=Join-Path $work $scenario
@@ -99,50 +156,18 @@ try {
     if ($actualCount -ne $liveCount) {
       throw 'R6 isolated compilation source count changed.'
     }
-    # SCC 0.5.31 actual CLI: -compile <source path> <cache file>.
-    # Both invocations start from identical, unmodified user-supplied base.
+    # Same canonical invocation proven by empty-source smoke, now complete
+    # installed source tree. The clean base input must remain byte-identical.
     $privateLog=Join-Path $work ($scenario + '-scc.log')
-    # Match RED4ext's headless compile policy: never execute VM code or
-    # generate debugger instrumentation inside an isolated CI workspace.
-    $args=@('-compile',$scripts,$cache,'-Wnone','-threads','4',
-            '-no-testonly','-no-breakpoint','-no-exec','-no-debug',
-            '-profile=off')
-    # WaitForExit is bounded; a malformed input or hung native compiler
-    # must never consume an unlimited Actions runner. Read both redirected
-    # streams asynchronously to avoid pipe backpressure deadlocks.
-    $processInfo=[System.Diagnostics.ProcessStartInfo]::new($tools[0].FullName)
-    $processInfo.UseShellExecute=$false
-    $processInfo.WorkingDirectory=$tools[0].DirectoryName
-    $processInfo.RedirectStandardOutput=$true
-    $processInfo.RedirectStandardError=$true
-    foreach($arg in $args) { [void]$processInfo.ArgumentList.Add([string]$arg) }
-    $process=[System.Diagnostics.Process]::new()
-    $process.StartInfo=$processInfo
-    try {
-      if (!$process.Start()) { throw 'R6_SCC_NATIVE_LAUNCH_FAILED' }
-      $stdoutTask=$process.StandardOutput.ReadToEndAsync()
-      $stderrTask=$process.StandardError.ReadToEndAsync()
-      if (!$process.WaitForExit(240000)) {
-        $process.Kill($true)
-        $process.WaitForExit()
-        throw ('R6_' + $scenario.ToUpperInvariant() +
-               '_SCC_TIMEOUT: native compiler exceeded 240 seconds')
-      }
-      $output=$stdoutTask.GetAwaiter().GetResult()
-      $errors=$stderrTask.GetAwaiter().GetResult()
-      [System.IO.File]::WriteAllText($privateLog, $output + [Environment]::NewLine + $errors)
-      $code=$process.ExitCode
-      if ($code -ne 0) {
-        throw ('R6_' + $scenario.ToUpperInvariant() +
-               '_SCC_FAILED: exit=' + $code + '; source diagnostics runner-private')
-      }
+    Invoke-GenuineScc -Executable $tools[0].FullName -Arguments @('-compile',$scripts,$cache) -Phase $scenario -LogPath $privateLog -TimeoutSeconds 240
+    $compiled=$cache+'.modded'
+    if (!(Test-Path -LiteralPath $compiled -PathType Leaf)) {
+      throw ('R6_SCC_OUTPUT_MISSING: phase='+$scenario+' expected .modded output')
     }
-    finally { $process.Dispose() }
-    $result=Get-Item -LiteralPath $cache
-    $sha=(Get-FileHash -LiteralPath $cache -Algorithm SHA256).Hash
-    if ($result.Length -lt 1048576 -or $sha -eq $baseSha) {
-      throw ('R6_' + $scenario.ToUpperInvariant() +
-             '_SCC_OUTPUT_UNPROVEN: missing or unchanged compiled bundle')
+    $result=Get-Item -LiteralPath $compiled
+    $sha=(Get-FileHash -LiteralPath $compiled -Algorithm SHA256).Hash
+    if ($result.Length -lt 1048576 -or $sha -eq $baseSha -or (Get-FileHash -LiteralPath $cache -Algorithm SHA256).Hash -ne $baseSha) {
+      throw ('R6_SCC_OUTPUT_UNPROVEN: phase='+$scenario+' invalid compiled cache or mutated vanilla input')
     }
     $outputs+=@([pscustomobject]@{ Scenario=$scenario; Bytes=$result.Length; Sha256=$sha })
   }
