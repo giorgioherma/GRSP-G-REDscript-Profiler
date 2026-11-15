@@ -24,6 +24,64 @@ internal sealed class SourceAdmission
             throw new InvalidDataException("Live r6/scripts directory not found: " + scriptsRoot);
     }
 
+    // Whole-stack read-only source inventory for CI-only verification. This is
+    // NOT REDscript compilation, receiver proof, or rewrite admission.
+    // Output is aggregate-only: third-party owner names and source text remain
+    // inside the private checkout and never enter public CI artifacts.
+    internal object AuditAll()
+    {
+        int fileCount = 0;
+        int lexicallyIndexed = 0;
+        int structurallyUnproven = 0;
+        int recognizedMethods = 0;
+        long sourceBytes = 0;
+        var unknown = new SortedDictionary<string, int>(StringComparer.Ordinal);
+        var paths = Directory.EnumerateFiles(
+                scriptsRoot, "*.reds", System.IO.SearchOption.AllDirectories)
+            .OrderBy(p => p, StringComparer.OrdinalIgnoreCase);
+        foreach (string full in paths)
+        {
+            var info = new FileInfo(full);
+            if ((info.Attributes & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("Source reparse point rejected");
+            fileCount++;
+            byte[] bytes = File.ReadAllBytes(full);
+            sourceBytes += bytes.Length;
+            var parsed = ParsedFile.Parse(Encoding.UTF8.GetString(bytes),
+                Convert.ToHexString(SHA256.HashData(bytes)));
+            files[full] = parsed;
+            if (parsed.Valid)
+            {
+                lexicallyIndexed++;
+                recognizedMethods += parsed.Methods.Count;
+            }
+            else
+            {
+                structurallyUnproven++;
+                const string category = "UNSUPPORTED_OR_INVALID_REDSCRIPT_SYNTAX";
+                unknown[category] = unknown.GetValueOrDefault(category) + 1;
+            }
+        }
+        if (fileCount == 0)
+            throw new InvalidDataException("No live REDscript sources found");
+        return new {
+            schemaVersion = "grsp.source.audit.v1",
+            scope = "ALL_DISCOVERED_CURRENT_R6_SCRIPTS",
+            sourceFiles = fileCount,
+            sourceBytes,
+            lexicallyIndexedFiles = lexicallyIndexed,
+            structurallyUnprovenFiles = structurallyUnproven,
+            recognizedFunctionSpans = recognizedMethods,
+            unprovenCategories = unknown,
+            sourceState = "UNSAFE_OR_UNPROVEN",
+            generatedFiles = 0,
+            codeRewritten = false,
+            compilerValidated = false,
+            gameplayValidated = false,
+            privateSourcePathsIncluded = false
+        };
+    }
+
     internal SourceMatch Check(string rawPath, string sourceFunction, int sourceLine)
     {
         string? relative = RelativeScriptPath(rawPath);
