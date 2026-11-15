@@ -134,7 +134,7 @@ class GrspResolverContracts(unittest.TestCase):
         self.assertNotIn("Example.reds", self.output.read_text())
 
     def test_source_audit_records_unproven_syntax_without_assuming_proof(self):
-        self.source.write_text("public class Broken {\\n")
+        self.source.write_text("public class Broken {\n")
         r = self.run_source_audit()
         self.assertEqual(0, r.returncode, r.stderr)
         payload = json.loads(self.output.read_text())
