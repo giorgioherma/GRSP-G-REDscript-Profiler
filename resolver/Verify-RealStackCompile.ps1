@@ -112,12 +112,12 @@ try {
     }
   }
   # Fast executable and vanilla-cache probe before thousands of mod sources.
-  # SCC reads final.redscripts and writes its distinct .modded sibling.
+  # Explicit -outputCacheFile is required: SCC otherwise writes back into the source cache.
   $smokeScripts=Join-Path $work 'smoke/r6/scripts'
   $smokeCache=Join-Path $work 'smoke/r6/cache/final.redscripts'
   New-Item -ItemType Directory -Force -Path @($smokeScripts,(Split-Path $smokeCache -Parent)) | Out-Null
   Copy-Item -LiteralPath $baseFile.FullName -Destination $smokeCache -Force
-  Invoke-GenuineScc -Executable $tools[0].FullName -Arguments @('-compile',$smokeScripts,$smokeCache) -Phase 'empty-source-smoke' -LogPath (Join-Path $work 'smoke-scc.log') -TimeoutSeconds 35
+  Invoke-GenuineScc -Executable $tools[0].FullName -Arguments @('-compile',$smokeScripts,'-outputCacheFile',($smokeCache+'.modded'),$smokeCache) -Phase 'empty-source-smoke' -LogPath (Join-Path $work 'smoke-scc.log') -TimeoutSeconds 35
   $smokeModded=$smokeCache+'.modded'
   $smokeOriginal=(Get-FileHash -LiteralPath $smokeCache -Algorithm SHA256).Hash
   if ($smokeOriginal -ne $baseSha -or !(Test-Path -LiteralPath $smokeModded -PathType Leaf) -or (Get-Item -LiteralPath $smokeModded).Length -lt 1048576) {
@@ -157,9 +157,9 @@ try {
       throw 'R6 isolated compilation source count changed.'
     }
     # Same canonical invocation proven by empty-source smoke, now complete
-    # installed source tree. The clean base input must remain byte-identical.
+    # installed source tree. Explicit output path protects the vanilla cache.
     $privateLog=Join-Path $work ($scenario + '-scc.log')
-    Invoke-GenuineScc -Executable $tools[0].FullName -Arguments @('-compile',$scripts,$cache) -Phase $scenario -LogPath $privateLog -TimeoutSeconds 240
+    Invoke-GenuineScc -Executable $tools[0].FullName -Arguments @('-compile',$scripts,'-outputCacheFile',($cache+'.modded'),$cache) -Phase $scenario -LogPath $privateLog -TimeoutSeconds 240
     $compiled=$cache+'.modded'
     if (!(Test-Path -LiteralPath $compiled -PathType Leaf)) {
       throw ('R6_SCC_OUTPUT_MISSING: phase='+$scenario+' expected .modded output')
