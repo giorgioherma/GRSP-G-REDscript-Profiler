@@ -4,6 +4,7 @@ param(
   [Parameter(Mandatory=$true)][string]$PreviewRoot,
   [Parameter(Mandatory=$true)][string]$CompilerArchive,
   [Parameter(Mandatory=$true)][string]$CleanBaselineArchive,
+  [Parameter(Mandatory=$true)][string]$EffectiveCacheArchive,
   [Parameter(Mandatory=$true)][string]$ResolverDll
 )
 $ErrorActionPreference='Stop'
@@ -12,6 +13,7 @@ $game=(Resolve-Path -LiteralPath $GameRoot).Path
 $preview=(Resolve-Path -LiteralPath $PreviewRoot).Path
 $compilerZip=(Resolve-Path -LiteralPath $CompilerArchive).Path
 $baselineZip=(Resolve-Path -LiteralPath $CleanBaselineArchive).Path
+$effectiveZip=(Resolve-Path -LiteralPath $EffectiveCacheArchive).Path
 $dll=(Resolve-Path -LiteralPath $ResolverDll).Path
 $plan=Get-Content -LiteralPath (Join-Path $preview 'preview.json') -Raw | ConvertFrom-Json -Depth 80
 if ($plan.schemaVersion -ne 'grsp.generic.preview.v1' -or
@@ -100,9 +102,11 @@ New-Item -ItemType Directory -Path $work -Force | Out-Null
 try {
   $compilerRoot=Join-Path $work 'compiler'
   $baselineRoot=Join-Path $work 'supplied-base'
-  New-Item -ItemType Directory -Path @($compilerRoot,$baselineRoot) -Force | Out-Null
+  $effectiveRoot=Join-Path $work 'supplied-effective-cache'
+  New-Item -ItemType Directory -Path @($compilerRoot,$baselineRoot,$effectiveRoot) -Force | Out-Null
   Expand-Archive -LiteralPath $compilerZip -DestinationPath $compilerRoot -ErrorAction Stop
   Expand-Archive -LiteralPath $baselineZip -DestinationPath $baselineRoot -ErrorAction Stop
+  Expand-Archive -LiteralPath $effectiveZip -DestinationPath $effectiveRoot -ErrorAction Stop
   $tools=@(Get-ChildItem -LiteralPath $compilerRoot -Recurse -File -Filter 'scc.exe')
   $libs=@(Get-ChildItem -LiteralPath $compilerRoot -Recurse -File -Filter 'scc_lib.dll')
   $bases=@(Get-ChildItem -LiteralPath $baselineRoot -Recurse -File | Where-Object Name -eq 'final.redscripts')
@@ -153,6 +157,21 @@ try {
     throw 'R6 SCC smoke must preserve vanilla cache and emit a .modded compiled bundle.'
   }
   Write-Host ('PASS GRSP SCC 0.5.31 empty-source smoke: baselineUnchanged=true moddedBytes='+(Get-Item -LiteralPath $smokeModded).Length)
+  # The user's REDmod configuration compiles with a separate effective cache.
+  # Treat the private upload as a *candidate*, not an authenticated vanilla
+  # cache. A previously compiled .modded bundle is never silently reused as
+  # source: SCC's official REDSCRIPT_SIGNATURE guard decides admissibility.
+  $effectiveFiles=@(Get-ChildItem -LiteralPath $effectiveRoot -Recurse -File | Where-Object Name -eq 'final.redscripts')
+  $effectiveModdedFiles=@(Get-ChildItem -LiteralPath $effectiveRoot -Recurse -File | Where-Object Name -eq 'final.redscripts.modded')
+  if ($effectiveFiles.Count -ne 1) {
+    throw ('R6_EFFECTIVE_CACHE_ARCHIVE_INVALID: expected one final.redscripts, found='+$effectiveFiles.Count+' compiledModdedEntries='+$effectiveModdedFiles.Count)
+  }
+  $effectiveFile=$effectiveFiles[0]
+  if ($effectiveFile.Length -lt 1048576) {
+    throw 'R6_EFFECTIVE_CACHE_TOO_SMALL: cannot use as game cache input'
+  }
+  $effectiveSha=(Get-FileHash -Algorithm SHA256 -LiteralPath $effectiveFile.FullName).Hash
+  Write-Host ('R6 effective-cache candidate admitted for independent compilation experiment: bytes='+$effectiveFile.Length+' differsFromVanilla='+($effectiveSha -ne $baseSha)+' originalVanillaSmokePassed=true')
   $outputs=@()
   foreach($scenario in @('untouched','optimized-preview')) {
     $root=Join-Path $work $scenario
@@ -163,9 +182,9 @@ try {
     foreach($item in @(Get-ChildItem -LiteralPath $liveSources -Force)) {
       Copy-Item -LiteralPath $item.FullName -Destination $scripts -Recurse -Force
     }
-    Copy-Item -LiteralPath $baseFile.FullName -Destination $cache -Force
-    if ((Get-FileHash -LiteralPath $cache -Algorithm SHA256).Hash -ne $baseSha) {
-      throw 'R6 source compilation input cache differs from user supplied baseline.'
+    Copy-Item -LiteralPath $effectiveFile.FullName -Destination $cache -Force
+    if ((Get-FileHash -LiteralPath $cache -Algorithm SHA256).Hash -ne $effectiveSha) {
+      throw 'R6 source compilation input cache differs from user supplied effective cache.'
     }
     if ($scenario -eq 'optimized-preview') {
       foreach($file in $overlay) {
@@ -195,7 +214,7 @@ try {
     }
     $result=Get-Item -LiteralPath $compiled
     $sha=(Get-FileHash -LiteralPath $compiled -Algorithm SHA256).Hash
-    if ($result.Length -lt 1048576 -or $sha -eq $baseSha -or (Get-FileHash -LiteralPath $cache -Algorithm SHA256).Hash -ne $baseSha) {
+    if ($result.Length -lt 1048576 -or $sha -eq $effectiveSha -or (Get-FileHash -LiteralPath $cache -Algorithm SHA256).Hash -ne $effectiveSha) {
       throw ('R6_SCC_OUTPUT_UNPROVEN: phase='+$scenario+' invalid compiled cache or mutated vanilla input')
     }
     $outputs+=@([pscustomobject]@{ Scenario=$scenario; Bytes=$result.Length; Sha256=$sha })
@@ -215,6 +234,7 @@ try {
       ' untouchedCacheBytes=' + $outputs[0].Bytes +
       ' optimizedCacheBytes=' + $outputs[1].Bytes +
       ' compiledOutputsDistinct=true originalSourcesUntouched=true ' +
+      'inputCache=USER_EFFECTIVE_CANDIDATE_NOT_VANILLA ' +
       'gameplayValidated=false deployable=false')
 }
 finally {
