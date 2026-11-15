@@ -77,3 +77,8 @@
 
 - [GCO #435](https://github.com/giorgioherma/Gs-Cyberpunk2077_Optimizations/actions/runs/43719910633) SUCCESS on 0be794152b30a11c0eebea0b03883ba27543ccd8: 323 GCO package/install/restore contracts, real three-profiler reporter, WPF regression. The normal GCO bundle still uses the historical stable GRSP native source and DOES NOT contain the new GRSP callback-pressure CSV writer.
 - GCO owner-native import now resolves exact source SHA from the successful manual GRSP workflow run rather than a stale static dev HEAD. Strict F11 + SHA/provenance gates are already committed; independent GRSP gco_explicit_f11 Rust checks passed CI #2. Manual release DLL build and first captured in-game evidence NOT YET DONE. Preserve GRSP stable main and gameplay/capture requirements.
+
+### 2026-11-15 — automatic independent owner-native CI handoff to GCO main
+
+- Separate GRSP workflow now emits the GCO strict-F11 native instrumentation DLL+source SHA/Cargo.lock/checksum/provenance on approved dev pushes after unit/compiler/source gates; no manual dispatch prerequisite. Native source commit `5046d331`, test correction `f36e9d8` following #3 real failed outdated-test contract; owner CI #4 PENDING. Stable GRSP main remains protected.
+- GCO main automatically discovers the latest **successful owner-native** artifact, imports that SHA-proven DLL into existing GCO package and has removed the legacy local GRSP Rust patch/build/cached fallback. No change to profiler manager install/restore or R7 semantics; actual F11 capture acceptance outstanding.

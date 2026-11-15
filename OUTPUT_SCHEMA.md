@@ -160,3 +160,7 @@ and explicit completion policy. GCO must consume the independently built
 artifact under a verified **opt-in** pin and must not recompile the
 instrumented GRSP DLL as a fallback. CI contract success is distinct
 from actual gameplay/capture verification.
+
+## 2026-11-15 — current native delivery contract (supersedes earlier manual-only sections)
+
+On GRSP `dev/resolver-profiler-handoff`, `.github/workflows/native-instrumentation.yml` now builds `gco_explicit_f11` release native DLL automatically on relevant source pushes **after** source-contracts pass. That owner artifact includes provenance SHA256, Cargo.lock, source commit and developer callback evidence writers. **GCO `main` downloads the newest successful owner-native artifact automatically in its original Windows packaging CI**. No manual run ID or GCO Rust build is required; missing/invalid evidence fails instead of reverting to a stale DLL. Standalone GRSP `main` unaffected. Offline CI and in-game F11/capture validation are independent.
