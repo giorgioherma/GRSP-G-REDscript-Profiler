@@ -102,6 +102,8 @@ internal static class Program
             var seenIds = new HashSet<string>(StringComparer.Ordinal);
             int repeatedIds = 0;
             var sourceAdmission = new SourceAdmission(gameRoot);
+            _ = sourceAdmission.AuditAll();
+            RequireSourceIdentity(options, sourceAdmission);
             var observations = new List<object>(callsites.Count);
             var ranks = new List<RankedObservation>(callsites.Count);
             var statusCount = new SortedDictionary<string, int>(StringComparer.Ordinal);
@@ -148,9 +150,7 @@ internal static class Program
                     work, rate, edges, match.Status, resolution, caveat));
             }
 
-            int sourceCount = Directory.EnumerateFiles(
-                Path.Combine(gameRoot, "r6", "scripts"), "*.reds",
-                System.IO.SearchOption.AllDirectories).Count();
+            int sourceCount = sourceAdmission.InspectedFileCount;
             var top = ranks.OrderByDescending(x => x.ExclusiveInstrumentedMs)
                 .ThenByDescending(x => x.OutgoingEdgesPerSec)
                 .ThenBy(x => x.StableCallsiteId, StringComparer.Ordinal)
@@ -176,6 +176,7 @@ internal static class Program
                 source = new {
                     inputKind = "CURRENT_LIVE_R6_SCRIPTS",
                     fileCount = sourceCount,
+                    sourceStackSha256 = sourceAdmission.SourceStackSha256,
                     inspectedDistinctFiles = sourceAdmission.InspectedFileCount,
                     admissionScope = "NAME_AND_LINE_MATCH_ONLY_NO_RECEIVER_OR_SEMANTIC_PROOF",
                     transformationState = "UNSAFE_OR_UNPROVEN",
@@ -200,6 +201,7 @@ internal static class Program
                 }
             };
 
+            VerifySourceUnchanged(sourceAdmission);
             Directory.CreateDirectory(Path.GetDirectoryName(output)!);
             using (var stream = File.Create(output))
                 JsonSerializer.Serialize(stream, payload,
@@ -220,14 +222,17 @@ internal static class Program
 
     private static int RunSourceAudit(Dictionary<string, string> options)
     {
-        if (options.Keys.Any(key => key is not ("--game" or "--out")))
-            throw new ArgumentException("Source audit requires only --game and --out");
+        if (options.Keys.Any(key => key is not (
+                "--game" or "--out" or "--expected-source-sha256")))
+            throw new ArgumentException("Source audit accepts --game, --out and optional --expected-source-sha256");
         string gameRoot = Path.GetFullPath(Required(options, "--game"));
         string output = Path.GetFullPath(Required(options, "--out"));
         if (Inside(output, gameRoot))
             throw new InvalidDataException("Refusing to write source audit into the game");
         var source = new SourceAdmission(gameRoot);
         object result = source.AuditAll();
+        RequireSourceIdentity(options, source);
+        VerifySourceUnchanged(source);
         Directory.CreateDirectory(Path.GetDirectoryName(output)!);
         // Use a disposable file and atomic move: failures must not leave a
         // misleading partially written successful audit.
@@ -250,6 +255,26 @@ internal static class Program
         return 0;
     }
 
+    private static void RequireSourceIdentity(
+        IReadOnlyDictionary<string, string> options, SourceAdmission source)
+    {
+        if (!options.TryGetValue("--expected-source-sha256", out string? expected))
+            return;
+        if (expected.Length != 64 || !expected.All(Uri.IsHexDigit))
+            throw new InvalidDataException("Expected source SHA256 must be 64 hexadecimal characters");
+        if (!string.Equals(expected, source.SourceStackSha256,
+                StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("SOURCE_DRIFT_DETECTED: live REDscript stack differs from admitted source");
+    }
+
+    private static void VerifySourceUnchanged(SourceAdmission source)
+    {
+        if (!string.Equals(source.SourceStackSha256,
+                source.FingerprintCurrentSources(), StringComparison.Ordinal))
+            throw new InvalidDataException(
+                "SOURCE_DRIFT_DETECTED: live REDscript source changed during Resolver analysis");
+    }
+
     private static Dictionary<string, string> ParseArguments(string[] args)
     {
         if (args.Length % 2 != 0)
@@ -257,7 +282,7 @@ internal static class Program
         var options = new Dictionary<string, string>(StringComparer.Ordinal);
         for (int i = 0; i < args.Length; i += 2)
         {
-            if (args[i] is not ("--capture" or "--game" or "--out" or "--frame-evidence"))
+            if (args[i] is not ("--capture" or "--game" or "--out" or "--frame-evidence" or "--expected-source-sha256"))
                 throw new ArgumentException("Unknown Resolver option: " + args[i]);
             if (!options.TryAdd(args[i], args[i + 1]))
                 throw new ArgumentException("Duplicate Resolver option: " + args[i]);

@@ -16,6 +16,7 @@ internal sealed class SourceAdmission
         new(StringComparer.OrdinalIgnoreCase);
 
     internal int InspectedFileCount => files.Count;
+    internal string? SourceStackSha256 { get; private set; }
 
     internal SourceAdmission(string gameRoot)
     {
@@ -39,6 +40,7 @@ internal sealed class SourceAdmission
         int expressionBodiedMethods = 0;
         long sourceBytes = 0;
         var unknown = new SortedDictionary<string, int>(StringComparer.Ordinal);
+        using var fingerprint = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         var paths = Directory.EnumerateFiles(
                 scriptsRoot, "*.reds", System.IO.SearchOption.AllDirectories)
             .OrderBy(p => p, StringComparer.OrdinalIgnoreCase);
@@ -49,6 +51,7 @@ internal sealed class SourceAdmission
                 throw new InvalidDataException("Source reparse point rejected");
             fileCount++;
             byte[] bytes = File.ReadAllBytes(full);
+            AddFileFingerprint(fingerprint, full, bytes);
             sourceBytes += bytes.Length;
             var parsed = ParsedFile.Parse(Encoding.UTF8.GetString(bytes),
                 Convert.ToHexString(SHA256.HashData(bytes)));
@@ -70,11 +73,13 @@ internal sealed class SourceAdmission
         }
         if (fileCount == 0)
             throw new InvalidDataException("No live REDscript sources found");
+        SourceStackSha256 = Convert.ToHexString(fingerprint.GetHashAndReset());
         return new {
             schemaVersion = "grsp.source.audit.v1",
             scope = "ALL_DISCOVERED_CURRENT_R6_SCRIPTS",
             sourceFiles = fileCount,
             sourceBytes,
+            sourceStackSha256 = SourceStackSha256,
             lexicallyIndexedFiles = lexicallyIndexed,
             structurallyUnprovenFiles = structurallyUnproven,
             recognizedFunctionSpans = recognizedMethods,
@@ -89,6 +94,40 @@ internal sealed class SourceAdmission
             gameplayValidated = false,
             privateSourcePathsIncluded = false
         };
+    }
+
+    // Invocation-local drift identity. No hardcoded mod versions or permanent
+    // original hashes. Paths and source text are never emitted in audit JSON.
+    internal string FingerprintCurrentSources()
+    {
+        using var fingerprint = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        int count = 0;
+        foreach (string full in Directory.EnumerateFiles(
+                     scriptsRoot, "*.reds", System.IO.SearchOption.AllDirectories)
+                     .OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+        {
+            if ((File.GetAttributes(full) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("Source reparse point rejected");
+            AddFileFingerprint(fingerprint, full, File.ReadAllBytes(full));
+            count++;
+        }
+        if (count == 0)
+            throw new InvalidDataException("No live REDscript sources found");
+        return Convert.ToHexString(fingerprint.GetHashAndReset());
+    }
+
+    private void AddFileFingerprint(
+        IncrementalHash fingerprint, string full, byte[] bytes)
+    {
+        string relative = Path.GetRelativePath(scriptsRoot, full)
+            .Replace('\\', '/');
+        byte[] path = Encoding.UTF8.GetBytes(relative);
+        Span<byte> size = stackalloc byte[4];
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(
+            size, path.Length);
+        fingerprint.AppendData(size);
+        fingerprint.AppendData(path);
+        fingerprint.AppendData(SHA256.HashData(bytes));
     }
 
     internal SourceMatch Check(string rawPath, string sourceFunction, int sourceLine)

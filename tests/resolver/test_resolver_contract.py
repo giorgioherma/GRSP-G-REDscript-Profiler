@@ -129,10 +129,11 @@ class GrspResolverContracts(unittest.TestCase):
         return subprocess.run(cmd + list(extra), capture_output=True,
                               text=True, timeout=60)
 
-    def run_source_audit(self, output=None):
+    def run_source_audit(self, output=None, *extra):
         return subprocess.run(
             ["dotnet", str(DLL), "source-audit",
-             "--game", str(self.game), "--out", str(output or self.output)],
+             "--game", str(self.game), "--out", str(output or self.output)] +
+            list(extra),
             capture_output=True, text=True, timeout=90)
 
     def test_read_only_full_source_audit_proves_no_rewrite(self):
@@ -176,6 +177,62 @@ class GrspResolverContracts(unittest.TestCase):
             self.assertEqual('UNSAFE_OR_UNPROVEN',
                              observation['evidence']['transformationState'])
         self.assertFalse(report['generationAuthorized'])
+
+    def test_source_stack_fingerprint_is_stable_and_rejects_source_drift(self):
+        before = self.source.read_bytes()
+        first = self.run_source_audit()
+        self.assertEqual(0, first.returncode, first.stderr)
+        audit = json.loads(self.output.read_text())
+        identity = audit["sourceStackSha256"]
+        self.assertEqual(64, len(identity))
+        self.output.unlink()
+        second = self.run_source_audit(
+            None, "--expected-source-sha256", identity)
+        self.assertEqual(0, second.returncode, second.stderr)
+        self.assertEqual(identity,
+                         json.loads(self.output.read_text())["sourceStackSha256"])
+        self.assertEqual(before, self.source.read_bytes())
+        self.output.unlink()
+        self.source.write_bytes(before + b"// changed after admission\n")
+        rejected = self.run_source_audit(
+            None, "--expected-source-sha256", identity)
+        self.assertNotEqual(0, rejected.returncode)
+        self.assertIn("SOURCE_DRIFT_DETECTED", rejected.stderr)
+        self.assertFalse(self.output.exists())
+        self.source.write_bytes(before)
+        restored = self.run_source_audit(
+            None, "--expected-source-sha256", identity)
+        self.assertEqual(0, restored.returncode, restored.stderr)
+
+    def test_grsp_analysis_requires_admitted_live_stack_when_pinned(self):
+        first = self.run_source_audit()
+        self.assertEqual(0, first.returncode, first.stderr)
+        admitted = json.loads(self.output.read_text())["sourceStackSha256"]
+        self.output.unlink()
+        accepted = self.run_cli("--expected-source-sha256", admitted)
+        self.assertEqual(0, accepted.returncode, accepted.stderr)
+        analysis = json.loads(self.output.read_text())
+        self.assertEqual(admitted, analysis["source"]["sourceStackSha256"])
+        self.assertFalse(analysis["generationAuthorized"])
+        self.output.unlink()
+        self.source.write_text(self.source.read_text() + "// change\n")
+        rejected = self.run_cli("--expected-source-sha256", admitted)
+        self.assertNotEqual(0, rejected.returncode)
+        self.assertIn("SOURCE_DRIFT_DETECTED", rejected.stderr)
+        self.assertFalse(self.output.exists())
+
+    def test_source_stack_fingerprint_detects_added_file(self):
+        first = self.run_source_audit()
+        self.assertEqual(0, first.returncode, first.stderr)
+        admitted = json.loads(self.output.read_text())["sourceStackSha256"]
+        self.output.unlink()
+        added = self.source.parent / "NewDependency.reds"
+        added.write_text("public class NewDependency {}\n")
+        rejected = self.run_source_audit(
+            None, "--expected-source-sha256", admitted)
+        self.assertNotEqual(0, rejected.returncode)
+        self.assertIn("SOURCE_DRIFT_DETECTED", rejected.stderr)
+        self.assertFalse(self.output.exists())
 
     def test_source_audit_records_unproven_syntax_without_assuming_proof(self):
         self.source.write_text("public class Broken {\n")
