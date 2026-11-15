@@ -1,4 +1,4 @@
-# GRSP-owned R6 real compiler contract. Runner only; not installable output.
+# GRSP-owned headless SCC 0.5.31 compiler contract. Runner only; no game writes.
 param(
   [Parameter(Mandatory=$true)][string]$GameRoot,
   [Parameter(Mandatory=$true)][string]$PreviewRoot,
@@ -24,48 +24,61 @@ if ($plan.schemaVersion -ne 'grsp.generic.preview.v1' -or
 }
 # One native invocation implementation for both the smoke and full-source gates.
 # Logs stay on the private runner; never publish third-party source paths.
-function Invoke-GenuineScc {
-  param(
-    [string]$Executable, [string[]]$Arguments, [string]$Phase,
-    [string]$LogPath, [int]$TimeoutSeconds
-  )
-  $info=[System.Diagnostics.ProcessStartInfo]::new($Executable)
+# The official scc.exe CLI hardcodes show_error_popup=true. Its error
+# dialog hangs headless Windows Actions; use the source-owned .NET 10 CLI
+# over scc_lib.dll exports to disable the popup and report real errors.
+function Invoke-HeadlessScc {
+  param([string]$Phase,[string]$IsolatedRoot,[string]$CompilerLib,[int]$TimeoutSeconds)
+  $r6=Join-Path $IsolatedRoot 'r6'
+  $cache=Join-Path $r6 'cache/final.redscripts'
+  $compiled=$cache+'.modded'
+  $report=Join-Path $work ($Phase+'-headless-result.json')
+  $privateLog=Join-Path $work ($Phase+'-native-compiler-error.log')
+  Set-Content -LiteralPath (Join-Path $IsolatedRoot '.grsp-r6-workspace') -Value 'GRSP_R6_ISOLATED_WORKSPACE' -NoNewline
+  New-Item -ItemType Directory -Force -Path (Join-Path $r6 'logs') | Out-Null
+  $args=@($dll,'scc-headless','--workspace',$IsolatedRoot,'--r6',$r6,'--cache',$cache,'--compiled',$compiled,'--scc-native',$CompilerLib,'--out',$report,'--log',$privateLog)
+  $info=[System.Diagnostics.ProcessStartInfo]::new('dotnet')
+  $info.WorkingDirectory=Split-Path $dll -Parent
   $info.UseShellExecute=$false
-  $info.WorkingDirectory=Split-Path $Executable -Parent
   $info.RedirectStandardOutput=$true
   $info.RedirectStandardError=$true
-  foreach($arg in $Arguments) { [void]$info.ArgumentList.Add([string]$arg) }
+  foreach($arg in $args) { [void]$info.ArgumentList.Add([string]$arg) }
   $p=[System.Diagnostics.Process]::new()
   $p.StartInfo=$info
-  $watch=[System.Diagnostics.Stopwatch]::StartNew()
+  $timer=[System.Diagnostics.Stopwatch]::StartNew()
   try {
-    if (!$p.Start()) { throw ('R6_SCC_LAUNCH_FAILED: phase='+$Phase) }
+    if (!$p.Start()) { throw ('R6_HEADLESS_SCC_LAUNCH_FAILED: phase='+$Phase) }
     $stdout=$p.StandardOutput.ReadToEndAsync()
     $stderr=$p.StandardError.ReadToEndAsync()
     $exited=$p.WaitForExit($TimeoutSeconds*1000)
     if (!$exited) { $p.Kill($true); $p.WaitForExit() }
     $out=$stdout.GetAwaiter().GetResult()
     $err=$stderr.GetAwaiter().GetResult()
-    [System.IO.File]::WriteAllText($LogPath,$out+[Environment]::NewLine+$err)
     $cpu=[Math]::Round($p.TotalProcessorTime.TotalSeconds,1)
-    $peak=[Math]::Round($p.PeakWorkingSet64/1MB,1)
-    $code=if($exited){[string]$p.ExitCode}else{'TIMEOUT'}
-    Write-Host ('R6 SCC diag: phase='+$Phase+' seconds='+
-      [Math]::Round($watch.Elapsed.TotalSeconds,1)+' cpuSeconds='+$cpu+
-      ' peakMB='+$peak+' stdoutChars='+$out.Length+
-      ' stderrChars='+$err.Length+' exit='+$code)
-    if (!$exited) {
-      throw ('R6_SCC_TIMEOUT: phase='+$Phase+' limit='+$TimeoutSeconds+
-        's cpuSeconds='+$cpu+' peakMB='+$peak+'; private SCC log not uploaded')
+    $exitLabel=if($exited){[string]$p.ExitCode}else{'TIMEOUT'}
+    Write-Host ('R6 SCC headless: phase='+$Phase+' seconds='+[Math]::Round($timer.Elapsed.TotalSeconds,1)+' cpuSeconds='+$cpu+' exit='+$exitLabel)
+    if (!$exited) { throw ('R6_HEADLESS_SCC_TIMEOUT: phase='+$Phase+' limit='+$TimeoutSeconds+'s') }
+    if (!(Test-Path -LiteralPath $report -PathType Leaf)) {
+      throw ('R6_HEADLESS_SCC_REPORT_MISSING: phase='+$Phase+' exit='+$p.ExitCode+' stderrChars='+$err.Length)
     }
-    if ($p.ExitCode -ne 0) {
-      throw ('R6_SCC_FAILED: phase='+$Phase+' exit='+$p.ExitCode+
-        '; private SCC log not uploaded')
+    $result=Get-Content -LiteralPath $report -Raw | ConvertFrom-Json -Depth 40
+    if ($result.schemaVersion -ne 'grsp.scc.headless.v1' -or
+        $result.guiErrorPopupDisabled -ne $true -or
+        $result.originalCacheUnchanged -ne $true) {
+      throw ('R6_HEADLESS_SCC_EVIDENCE_INVALID: phase='+$Phase)
     }
+    if ($p.ExitCode -ne 0 -or $result.success -ne $true) {
+      $codes=@($result.errorCodeCounts.PSObject.Properties | ForEach-Object { $_.Name+'='+$_.Value }) -join ','
+      throw ('R6_HEADLESS_SCC_COMPILATION_FAILED: phase='+$Phase+' errorCodes='+$codes+' diagnosticBytes='+$result.diagnosticBytes+' rawErrorsRunnerPrivate=true')
+    }
+    if ($result.generatedOutputPresent -ne $true -or
+        [long]$result.generatedOutputBytes -lt 1048576) {
+      throw ('R6_HEADLESS_SCC_OUTPUT_MISSING: phase='+$Phase)
+    }
+    return $result
   }
-  finally { $watch.Stop(); $p.Dispose() }
+  finally { $p.Dispose(); $timer.Stop() }
 }
-
 $work=Join-Path $env:RUNNER_TEMP ('grsp-r6-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $work -Force | Out-Null
 try {
@@ -117,7 +130,7 @@ try {
   $smokeCache=Join-Path $work 'smoke/r6/cache/final.redscripts'
   New-Item -ItemType Directory -Force -Path @($smokeScripts,(Split-Path $smokeCache -Parent)) | Out-Null
   Copy-Item -LiteralPath $baseFile.FullName -Destination $smokeCache -Force
-  Invoke-GenuineScc -Executable $tools[0].FullName -Arguments @('-compile',$smokeScripts,'-outputCacheFile',($smokeCache+'.modded'),$smokeCache) -Phase 'empty-source-smoke' -LogPath (Join-Path $work 'smoke-scc.log') -TimeoutSeconds 35
+  $smokeStatus=Invoke-HeadlessScc -Phase 'empty-source-smoke' -IsolatedRoot (Join-Path $work 'smoke') -CompilerLib $libs[0].FullName -TimeoutSeconds 35
   $smokeModded=$smokeCache+'.modded'
   $smokeOriginal=(Get-FileHash -LiteralPath $smokeCache -Algorithm SHA256).Hash
   if ($smokeOriginal -ne $baseSha -or !(Test-Path -LiteralPath $smokeModded -PathType Leaf) -or (Get-Item -LiteralPath $smokeModded).Length -lt 1048576) {
@@ -156,10 +169,10 @@ try {
     if ($actualCount -ne $liveCount) {
       throw 'R6 isolated compilation source count changed.'
     }
-    # Same canonical invocation proven by empty-source smoke, now complete
+    # Same direct native API proven by empty-source smoke, now complete
     # installed source tree. Explicit output path protects the vanilla cache.
     $privateLog=Join-Path $work ($scenario + '-scc.log')
-    Invoke-GenuineScc -Executable $tools[0].FullName -Arguments @('-compile',$scripts,'-outputCacheFile',($cache+'.modded'),$cache) -Phase $scenario -LogPath $privateLog -TimeoutSeconds 240
+    $fullStatus=Invoke-HeadlessScc -Phase $scenario -IsolatedRoot $root -CompilerLib $libs[0].FullName -TimeoutSeconds 240
     $compiled=$cache+'.modded'
     if (!(Test-Path -LiteralPath $compiled -PathType Leaf)) {
       throw ('R6_SCC_OUTPUT_MISSING: phase='+$scenario+' expected .modded output')

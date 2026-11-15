@@ -530,6 +530,52 @@ class GrspResolverContracts(unittest.TestCase):
         self.assertIn('SOURCE_DRIFT_DETECTED', preview.stderr)
         self.assertFalse(folder.exists())
 
+    def test_headless_scc_refuses_unmarked_live_game_root(self):
+        cache = self.game / 'r6' / 'cache' / 'final.redscripts'
+        cache.parent.mkdir(parents=True)
+        cache.write_bytes(b'not a real cache')
+        source_before = self.source.read_bytes()
+        cache_before = cache.read_bytes()
+        report = self.root / 'compiled-report.json'
+        cmd = [
+            'dotnet', str(DLL), 'scc-headless',
+            '--workspace', str(self.game),
+            '--r6', str(self.game / 'r6'),
+            '--cache', str(cache),
+            '--compiled', str(cache) + '.modded',
+            '--scc-native', str(cache),
+            '--out', str(report),
+            '--log', str(self.root / 'compile-errors.log')
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn('explicitly isolated', result.stderr)
+        self.assertFalse(report.exists())
+        self.assertFalse(Path(str(cache) + '.modded').exists())
+        self.assertEqual(cache_before, cache.read_bytes())
+        self.assertEqual(source_before, self.source.read_bytes())
+
+    def test_headless_scc_refuses_overwriting_vanilla_cache(self):
+        cache = self.game / 'r6' / 'cache' / 'final.redscripts'
+        cache.parent.mkdir(parents=True)
+        cache.write_bytes(b'not a real cache')
+        (self.game / '.grsp-r6-workspace').write_text(
+            'GRSP_R6_ISOLATED_WORKSPACE')
+        cmd = [
+            'dotnet', str(DLL), 'scc-headless',
+            '--workspace', str(self.game),
+            '--r6', str(self.game / 'r6'),
+            '--cache', str(cache),
+            '--compiled', str(cache),
+            '--scc-native', str(cache),
+            '--out', str(self.root / 'compiler-result.json'),
+            '--log', str(self.root / 'compiler-diagnostic.log')
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn('explicitly isolated', result.stderr)
+        self.assertEqual(b'not a real cache', cache.read_bytes())
+
     def test_generic_preview_refuses_writes_to_live_game(self):
         self.prepare_measured_membership()
         analyzed = self.run_cli()

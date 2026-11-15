@@ -17,6 +17,8 @@ internal static class Program
                 return RunSourceAudit(ParseArguments(args.Skip(1).ToArray()));
             if (args.Length > 0 && args[0] == "preview-generic")
                 return RunGenericPreview(ParseArguments(args.Skip(1).ToArray()));
+            if (args.Length > 0 && args[0] == "scc-headless")
+                return HeadlessScc.Run(ParseArguments(args.Skip(1).ToArray()));
             if (args.Length == 0 || args[0] != "analyze")
                 throw new ArgumentException(
                     "Usage: GRedscript.Resolver source-audit --game <live game root> " +
@@ -301,7 +303,8 @@ internal static class Program
         var options = new Dictionary<string, string>(StringComparer.Ordinal);
         for (int i = 0; i < args.Length; i += 2)
         {
-            if (args[i] is not ("--capture" or "--game" or "--out" or "--analysis" or "--frame-evidence" or "--expected-source-sha256"))
+            if (args[i] is not ("--capture" or "--game" or "--out" or "--analysis" or "--frame-evidence" or "--expected-source-sha256" or
+                    "--workspace" or "--r6" or "--cache" or "--compiled" or "--scc-native" or "--log"))
                 throw new ArgumentException("Unknown Resolver option: " + args[i]);
             if (!options.TryAdd(args[i], args[i + 1]))
                 throw new ArgumentException("Duplicate Resolver option: " + args[i]);
