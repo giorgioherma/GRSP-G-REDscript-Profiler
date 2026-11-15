@@ -64,6 +64,8 @@ internal static class Program
                 throw new InvalidDataException(
                     "GRSP capture quality is insufficient for Resolver source admission");
 
+            string collectionProvenance = GcoCollectionIndex.Verify(captureRoot, nativeRoot);
+
             var tables = new SortedDictionary<string, CsvTable>(StringComparer.Ordinal);
             foreach (string bucket in new[] { "Developer", "Runtime" })
             {
@@ -169,6 +171,7 @@ internal static class Program
                     frameQuality = health.GetProperty("frameQuality").GetString(),
                     explicitF11Complete = true,
                     nativeSourceOwner = "GRSP",
+                    collectionProvenance,
                     scope = "REDscript outgoing VM call edges, NOT callback entries or total CPU",
                     rawSummarySha256 = Sha(summaryFile)
                 },

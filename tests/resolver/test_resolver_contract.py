@@ -129,6 +129,29 @@ class GrspResolverContracts(unittest.TestCase):
         return subprocess.run(cmd + list(extra), capture_output=True,
                               text=True, timeout=60)
 
+    def write_gco_index(self):
+        def record(path, relative):
+            raw = path.read_bytes()
+            return {
+                "Path": relative,
+                "Bytes": len(raw),
+                "Sha256": hashlib.sha256(raw).hexdigest().upper(),
+            }
+
+        redscript = [
+            record(file, file.relative_to(self.native).as_posix())
+            for file in self.native.rglob("*") if file.is_file()
+        ]
+        index = {
+            "SessionId": "17b44e540df4401c8eb72c198dca5c7e",
+            "Redscript": {"Files": redscript},
+            "FrameTimeEvidence": record(
+                self.mon, self.mon.relative_to(self.capture).as_posix()),
+        }
+        (self.capture / "collection.json").write_text(
+            json.dumps(index), encoding="utf-8")
+        return index
+
     def run_source_audit(self, output=None, *extra):
         return subprocess.run(
             ["dotnet", str(DLL), "source-audit",
@@ -293,6 +316,46 @@ class GrspResolverContracts(unittest.TestCase):
         self.assertEqual("UNSAFE_OR_UNPROVEN", source["transformationState"])
         self.assertFalse(report["generationAuthorized"])
         self.assertEqual(1, report["source"]["inspectedDistinctFiles"])
+
+    def test_indexed_gco_capture_proves_all_raw_evidence_hashes(self):
+        self.write_gco_index()
+        result = self.run_cli()
+        self.assertEqual(0, result.returncode, result.stderr)
+        report = json.loads(self.output.read_text(encoding="utf-8"))
+        self.assertEqual("GCO_INDEXED_COLLECTED_BYTES_VERIFIED",
+                         report["capture"]["collectionProvenance"])
+        self.assertEqual(2, report["frameEvidence"]
+                         ["sourceRowsVerifiedAgainstOriginalCsv"])
+        self.assertTrue(report["frameEvidence"]
+                        ["nativeF11QpcUnixAnchorsVerified"])
+
+    def test_tampered_indexed_native_callsites_refuses_before_analysis(self):
+        self.write_gco_index()
+        file = self.native / "Data" / "Developer" / "RSP_CallSites.csv"
+        with file.open("a", encoding="utf-8") as handle:
+            handle.write("# unsealed extra callsite\n")
+        result = self.run_cli()
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("indexed collected file hash/size mismatch", result.stderr)
+        self.assertFalse(self.output.exists())
+
+    def test_missing_indexed_callback_evidence_refuses(self):
+        index = self.write_gco_index()
+        index["Redscript"]["Files"] = [
+            item for item in index["Redscript"]["Files"]
+            if not item["Path"].endswith("RSP_CallbackTargets.csv")
+        ]
+        (self.capture / "collection.json").write_text(json.dumps(index))
+        result = self.run_cli()
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("omits required GRSP evidence", result.stderr)
+        self.assertFalse(self.output.exists())
+
+    def test_malformed_index_refuses_instead_of_standalone_fallback(self):
+        (self.capture / "collection.json").write_text("{bad-index")
+        result = self.run_cli()
+        self.assertNotEqual(0, result.returncode)
+        self.assertFalse(self.output.exists())
 
     def test_missing_f11_completion_refuses(self):
         (self.native / "Data" / "Metadata" /
