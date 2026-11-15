@@ -143,6 +143,31 @@ class GrspResolverContracts(unittest.TestCase):
         self.assertEqual(0, payload["recognizedFunctionSpans"])
         self.assertFalse(payload["compilerValidated"])
 
+    def test_real_redscript_declaration_forms_are_indexed_without_rewrite(self):
+        self.source.write_text(
+            'module Example\n'
+            'public native func External() -> Bool\n'
+            'public abstract class Base {\n'
+            '  public func Missing() -> Bool;\n'
+            '  public static func Size() -> Int32 = 42\n'
+            '  public static func Palette() -> array<Int32> = [\n'
+            '    1, 2\n'
+            '  ]\n'
+            '  public func Live() -> Int32 { return 42; }\n'
+            '}\n', encoding='utf-8')
+        before = self.source.read_bytes()
+        result = self.run_source_audit()
+        self.assertEqual(0, result.returncode, result.stderr)
+        audit = json.loads(self.output.read_text(encoding='utf-8'))
+        self.assertEqual(1, audit['lexicallyIndexedFiles'])
+        self.assertEqual(0, audit['structurallyUnprovenFiles'])
+        self.assertEqual(3, audit['recognizedFunctionSpans'])
+        self.assertEqual(1, audit['nativeExternalDeclarations'])
+        self.assertEqual(1, audit['declarationOnlySignatures'])
+        self.assertEqual(2, audit['expressionBodiedFunctions'])
+        self.assertFalse(audit['codeRewritten'])
+        self.assertEqual(before, self.source.read_bytes())
+
     def test_source_audit_refuses_output_inside_game(self):
         target = self.game / "audit.json"
         r = self.run_source_audit(output=target)

@@ -34,6 +34,9 @@ internal sealed class SourceAdmission
         int lexicallyIndexed = 0;
         int structurallyUnproven = 0;
         int recognizedMethods = 0;
+        int nativeDeclarations = 0;
+        int declarationOnlyMethods = 0;
+        int expressionBodiedMethods = 0;
         long sourceBytes = 0;
         var unknown = new SortedDictionary<string, int>(StringComparer.Ordinal);
         var paths = Directory.EnumerateFiles(
@@ -54,6 +57,9 @@ internal sealed class SourceAdmission
             {
                 lexicallyIndexed++;
                 recognizedMethods += parsed.Methods.Count;
+                nativeDeclarations += parsed.NativeDeclarationCount;
+                declarationOnlyMethods += parsed.DeclarationOnlyCount;
+                expressionBodiedMethods += parsed.ExpressionBodiedCount;
             }
             else
             {
@@ -72,6 +78,9 @@ internal sealed class SourceAdmission
             lexicallyIndexedFiles = lexicallyIndexed,
             structurallyUnprovenFiles = structurallyUnproven,
             recognizedFunctionSpans = recognizedMethods,
+            nativeExternalDeclarations = nativeDeclarations,
+            declarationOnlySignatures = declarationOnlyMethods,
+            expressionBodiedFunctions = expressionBodiedMethods,
             unprovenCategories = unknown,
             sourceState = "UNSAFE_OR_UNPROVEN",
             generatedFiles = 0,
@@ -164,6 +173,9 @@ internal sealed class SourceAdmission
         internal string Diagnostic { get; private set; } = "";
         internal string Sha256 { get; private init; } = "";
         internal int LineCount { get; private init; }
+        internal int NativeDeclarationCount { get; private set; }
+        internal int DeclarationOnlyCount { get; private set; }
+        internal int ExpressionBodiedCount { get; private set; }
         internal List<Method> Methods { get; } = new();
 
         internal static ParsedFile Parse(string text, string sha)
@@ -182,24 +194,46 @@ internal sealed class SourceAdmission
                     string name = tokens[i + 1].Value;
                     if (tokens[i + 2].Value != "(" || !IsIdentifier(name))
                         throw new InvalidDataException("Unrecognized function declaration");
+
                     int parametersEnd = FindMatching(tokens, i + 2, "(", ")");
+                    // A REDscript native declaration may intentionally have no
+                    // body or semicolon. It is an external ABI, never executable
+                    // script source eligible for a generated rewrite.
+                    bool native = false;
+                    for (int k = i - 1; k >= 0 &&
+                            tokens[k].Line == tokens[i].Line; k--)
+                        if (tokens[k].Value == "native") { native = true; break; }
+                    if (native)
+                    {
+                        parsed.NativeDeclarationCount++;
+                        continue;
+                    }
+
                     int j = parametersEnd + 1;
                     while (j < tokens.Count &&
                            tokens[j].Value is not ("{" or "=" or ";"))
                         j++;
-                    if (j == tokens.Count || tokens[j].Value == ";")
+                    if (j == tokens.Count)
                         throw new InvalidDataException("Function body is not structurally proven");
+                    // Abstract/interface declaration: indexing its signature
+                    // is not proof of an executable method body.
+                    if (tokens[j].Value == ";")
+                    {
+                        parsed.DeclarationOnlyCount++;
+                        continue;
+                    }
 
                     int end;
                     if (tokens[j].Value == "{")
                         end = FindMatching(tokens, j, "{", "}");
                     else
                     {
-                        // REDscript supports source-level expression bodies.
-                        end = j + 1;
-                        while (end < tokens.Count && tokens[end].Value != ";") end++;
-                        if (end == tokens.Count)
-                            throw new InvalidDataException("Unterminated expression-body function");
+                        // REDscript permits expression bodies without semicolon,
+                        // including multiline bracketed array/call expressions.
+                        // Stop at the first proven top-level statement boundary;
+                        // do not absorb the next declaration's method span.
+                        end = FindExpressionEnd(tokens, j + 1);
+                        parsed.ExpressionBodiedCount++;
                     }
                     parsed.Methods.Add(new Method(name, tokens[i].Line, tokens[end].Line));
                 }
@@ -225,14 +259,46 @@ internal sealed class SourceAdmission
             int depth = 0;
             for (int i = start; i < tokens.Count; i++)
             {
-                if (tokens[i].Value == open) depth++;
-                if (tokens[i].Value == close && --depth == 0) return i;
-                // Only the closing token decrements the depth.
-                if (tokens[i].Value != close && tokens[i].Value != open)
-                    continue;
+                if (tokens[i].Value == open)
+                    depth++;
+                else if (tokens[i].Value == close && --depth == 0)
+                    return i;
             }
             throw new InvalidDataException("Unbalanced function span");
         }
+
+        private static int FindExpressionEnd(IReadOnlyList<Token> tokens, int start)
+        {
+            if (start >= tokens.Count)
+                throw new InvalidDataException("Missing expression-body value");
+            int depth = 0;
+            int prior = start - 1;
+            for (int i = start; i < tokens.Count; i++)
+            {
+                Token current = tokens[i];
+                if (prior >= start && current.Line > tokens[prior].Line &&
+                    depth == 0 &&
+                    !ContinuesExpression(tokens[prior].Value) &&
+                    !ContinuesExpression(current.Value))
+                    return prior;
+                if (depth == 0 && current.Value == ";") return i;
+                if (depth == 0 && current.Value == "}")
+                {
+                    if (prior >= start) return prior;
+                    throw new InvalidDataException("Empty expression-body value");
+                }
+                if (current.Value is "(" or "[" or "{") depth++;
+                if (current.Value is ")" or "]" or "}") depth--;
+                prior = i;
+            }
+            if (prior >= start && depth == 0) return prior;
+            throw new InvalidDataException("Unterminated expression-body value");
+        }
+
+        private static bool ContinuesExpression(string token) =>
+            token is "+" or "-" or "*" or "/" or "%" or "&" or "|" or
+                "^" or "=" or "?" or "!" or ":" or "," or "." or
+                "<" or ">";
 
         private static void ValidateBalance(IReadOnlyList<Token> tokens)
         {
