@@ -1,5 +1,17 @@
 # GRSP development agent contract — profiler and native instrumentation only
 
+## STOP / repository routing — mandatory before any work
+
+**This repository is NOT the REDscript Resolver repository.** Its development branch name `dev/resolver-profiler-handoff` is a historical label, **not authorization** to develop the Resolver here.
+
+If a request involves **REDscript Resolver, R0–R10, R4/R5, generic optimization passes, scanner, generated .reds files, source admission, SCC compiler proof, idempotence, one combined ZIP, or cross-profiler interpretation**:
+1. **Stop all managed Resolver changes in GRSP.** Open `giorgioherma/Gs-Cyberpunk2077_Optimizations` on **`dev/redscript/resolver_handoff`**.
+2. Read that branch's `AGENTS.md`, `docs/integration/REDSCRIPT-RESOLVER-LOCAL-HANDOFF.md`, `docs/integration/REDSCRIPT-RESOLVER-PROGRESS.md` and `docs/LATEST-WORK.md`; continue there.
+3. Return to GRSP **only for a separately scoped native profiler/instrumentation change** (Rust VM hooks, F11, CSV evidence, install/restore). Keep source-owned native implementation here, and report its evidence/interface to GCO. Do not build a competing Resolver or move native profiler ownership into GCO.
+4. **Never treat old GRSP Resolver documentation or a checkout of this branch as the current task destination.** Historical Resolver handoffs were archived byte-for-byte under GCO `docs/integration/reference/` and deleted here.
+
+**Mandatory routing check:** before editing a file, ask whether the change creates/updates optimization analysis, planning, generation, source proof or compilation. If yes, the destination is **GCO**, even when a measured hotspot originated in a GRSP capture. No new managed Resolver directories, tests, CI or documents may be created here.
+
 **Authoritative GRSP development branch:** `dev/resolver-profiler-handoff`. Protect GRSP `main` and standalone v1.0.0. **Latest user-approved scope correction: 2026-11-16.**
 
 ## Current ownership (supersedes 2026-11-15 managed Resolver decisions)
