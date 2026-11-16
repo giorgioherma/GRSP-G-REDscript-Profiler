@@ -10,8 +10,10 @@ on:
       - '.github/workflows/native-instrumentation.yml'
       - 'src/lib.rs'
       - 'src/callback_pressure.rs'
+      - 'src/proxy_attribution.rs'
       - 'Cargo.toml'
       - 'tests/test_callback_instrumentation_contract.py'
+      - 'tests/test_proxy_attribution_contract.py'
   workflow_dispatch:
 
 permissions:
@@ -70,7 +72,7 @@ jobs:
             throw 'GRSP native output is not a Windows PE binary'
           }
           $asText=[Text.Encoding]::ASCII.GetString($bytes)
-          foreach($name in @('RSP_CallbackPressure.csv','RSP_CallbackTargets.csv','GCO-F11-Complete.flag')) {
+          foreach($name in @('RSP_CallbackPressure.csv','RSP_CallbackTargets.csv','RSP_ProxyAttribution.csv','GCO-F11-Complete.flag')) {
             if (!$asText.Contains($name)) { throw "Native DLL does not embed developer writer $name" }
           }
           $folder='instrumentation-native-artifact'
