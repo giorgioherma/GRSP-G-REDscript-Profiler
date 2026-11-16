@@ -27,6 +27,7 @@ use red4ext_rs::{
 use static_assertions::const_assert_eq;
 
 mod callback_pressure;
+mod proxy_attribution;
 
 const BIND_FUNCTION_HASH: u32 = 777_921_665;
 const VK_F11: i32 = 0x7A;
@@ -2284,6 +2285,8 @@ fn dump_results() -> std::io::Result<()> {
     dump_work_map_csv(&developer_dir.join("RSP_WorkMap.csv"))?;
     // Developer-only post-capture callback pressure: NO new runtime hooks.
     callback_pressure::export(&developer_dir)?;
+    // Post-F11 unresolved wrapper/proxy diagnostics; no extra runtime hooks.
+    proxy_attribution::export(&developer_dir)?;
 
     write_latest_pointer(&base, &dir)?;
     append_session_index(&base, &dir)?;
