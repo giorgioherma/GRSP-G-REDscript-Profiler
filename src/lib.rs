@@ -313,7 +313,10 @@ thread_local! {
 
 struct ProfileBookkeepingReset<'a>(&'a Cell<bool>);
 impl Drop for ProfileBookkeepingReset<'_> {
-    fn drop(&mut self) { self.0.set(false); }
+    fn drop(&mut self) {
+        self.0.set(false);
+        PROFILE_BOOKKEEPING_ACTIVE.fetch_sub(1, Ordering::SeqCst);
+    }
 }
 
 /// Never take a second mutable ThreadState reference if profiler bookkeeping
@@ -324,6 +327,9 @@ impl Drop for ProfileBookkeepingReset<'_> {
 fn with_profile_bookkeeping<R>(work: impl FnOnce() -> R) -> Option<R> {
     TLS_PROFILER_BOOKKEEPING.try_with(|busy| {
         if busy.replace(true) { return None; }
+        // Count even the pre-root TLS initialization window. F11 STOP cannot
+        // merge an UnsafeCell shard while this bookkeeping is in progress.
+        PROFILE_BOOKKEEPING_ACTIVE.fetch_add(1, Ordering::SeqCst);
         let _reset = ProfileBookkeepingReset(busy);
         Some(work())
     }).ok().flatten()
@@ -372,6 +378,7 @@ static FRAME_LISTENER_OK: AtomicBool = AtomicBool::new(false);
 static LAST_DUMP_OK: AtomicBool = AtomicBool::new(false);
 static LAST_SHARD_MERGE_OK: AtomicBool = AtomicBool::new(false);
 static ACTIVE_ROOTS: AtomicU64 = AtomicU64::new(0);
+static PROFILE_BOOKKEEPING_ACTIVE: AtomicU64 = AtomicU64::new(0);
 static FRAME_CALLBACKS: AtomicU64 = AtomicU64::new(0);
 static MERGED_SHARDS: AtomicU64 = AtomicU64::new(0);
 static STOP_DRAIN_US: AtomicU64 = AtomicU64::new(0);
@@ -831,7 +838,9 @@ fn finalize_thread_frame(t: &mut ThreadState, partial: bool) {
 }
 
 fn enter_profiled_call(key: CallsiteKey, virtual_name: Option<CName>) -> bool {
-    if PROFILE_STATE.load(Ordering::Relaxed) != STATE_RECORDING {
+    // Sequential consistency orders new hook registrations against F11 STOP.
+    // This check runs AFTER the in-flight guard was published.
+    if PROFILE_STATE.load(Ordering::SeqCst) != STATE_RECORDING {
         return false;
     }
 
@@ -1197,8 +1206,13 @@ fn add_final_partial_boundary(stop_qpc: u64) {
     });
 }
 
+fn capture_quiescent() -> bool {
+    ACTIVE_ROOTS.load(Ordering::SeqCst) == 0
+        && PROFILE_BOOKKEEPING_ACTIVE.load(Ordering::SeqCst) == 0
+}
+
 fn merge_all_shards() -> bool {
-    if ACTIVE_ROOTS.load(Ordering::Acquire) != 0 {
+    if !capture_quiescent() {
         return false;
     }
 
@@ -1231,8 +1245,9 @@ fn merge_all_shards() -> bool {
                 continue;
             }
 
-            // SAFETY: STOPPING barrier + ACTIVE_ROOTS==0 guarantees no hook
-            // thread is mutating the capture data while we merge it.
+            // SAFETY: STOPPING SeqCst barrier, zero active roots AND zero
+            // in-flight profiler bookkeeping guarantee no thread is mutating
+            // the UnsafeCell shard while we merge it.
             let t = unsafe { &mut *(*ptr).state.get() };
             if t.capture_id != capture_id {
                 continue;
@@ -1543,20 +1558,20 @@ fn finish_capture_internal(play_stop_signal: bool, drain_wait_ms: u64) {
     // STOPPING blocks all new profiled roots immediately. Existing roots may
     // finish, pop their TLS stacks and publish calls that ended inside the
     // requested measurement window.
-    PROFILE_STATE.store(STATE_STOPPING, Ordering::Release);
+    PROFILE_STATE.store(STATE_STOPPING, Ordering::SeqCst);
     if play_stop_signal {
         signal_stop();
     }
 
     let drain_start = qpc_now();
     let mut waited = 0u64;
-    while waited < drain_wait_ms && ACTIVE_ROOTS.load(Ordering::Acquire) != 0 {
+    while waited < drain_wait_ms && !capture_quiescent() {
         thread::sleep(Duration::from_millis(2));
         waited += 2;
     }
     STOP_DRAIN_US.store(ticks_to_us(qpc_now().saturating_sub(drain_start)), Ordering::Relaxed);
 
-    let quiescent = ACTIVE_ROOTS.load(Ordering::Acquire) == 0;
+    let quiescent = capture_quiescent();
     if quiescent {
         QUIESCENT_QPC.store(qpc_now(), Ordering::Release);
         add_final_partial_boundary(stop_qpc);
@@ -1570,7 +1585,9 @@ fn finish_capture_internal(play_stop_signal: bool, drain_wait_ms: u64) {
     PROFILE_STATE.store(STATE_COMPLETE, Ordering::Release);
 
     snapshot_last_counts();
-    let dump_ok = dump_results().is_ok();
+    // Never seal incomplete evidence when a hook is still in-flight or a
+    // shard merge failed. A partial source capture is not a valid GCO session.
+    let dump_ok = merge_ok && dump_results().is_ok();
     LAST_DUMP_OK.store(dump_ok, Ordering::Release);
     let _ = write_status_file();
 
