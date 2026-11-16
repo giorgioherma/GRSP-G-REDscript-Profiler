@@ -35,6 +35,8 @@ const HOTKEY_POLL_MS: u64 = 2;
 const SPIKE_THRESHOLD_US: u64 = 1_000;
 const MAX_SPIKE_EVENTS: usize = 100_000;
 const MAX_HOT_PATH_EVENTS: usize = 50_000;
+// Bound runtime proxy-child relationship cardinality per capture/thread.
+const MAX_PROXY_CHILD_KEYS_PER_THREAD: usize = 4096;
 const PUBLIC_TIMELINE_BUCKET_MS: u64 = 50;
 const STOP_DRAIN_WAIT_MS: u64 = 10_000;
 
@@ -185,6 +187,7 @@ struct ActiveCall {
     frame_id: u64,
     is_root: bool,
     descendant_calls: u64,
+    is_virtual_proxy: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -215,6 +218,19 @@ struct CrossModStat {
     frame_calls: Vec<(u64, u64)>,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+struct ProxyChildKey {
+    proxy: CallsiteKey,
+    child: CallsiteKey,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+struct ProxyChildStat {
+    calls: u64,
+    inclusive_ticks: u64,
+    exclusive_ticks: u64,
+}
+
 #[derive(Debug, Clone)]
 struct FrameBoundary {
     frame_id: u64,
@@ -229,7 +245,10 @@ struct ThreadState {
     thread_id: u32,
     caller_cache: HashMap<usize, CallerCacheEntry>,
     virtual_name_seen: HashSet<u64>,
+    virtual_proxy_targets: HashSet<u64>,
     stack: Vec<ActiveCall>,
+    proxy_children: HashMap<ProxyChildKey, ProxyChildStat>,
+    proxy_children_dropped: u64,
     current_frame_id: u64,
     frame_initialized: bool,
     frame_stats: HashMap<CallsiteKey, LocalStat>,
@@ -248,6 +267,8 @@ impl ThreadState {
     fn reset_capture(&mut self, capture_id: u64) {
         self.capture_id = capture_id;
         self.stack.clear();
+        self.proxy_children.clear();
+        self.proxy_children_dropped = 0;
         self.current_frame_id = 0;
         self.frame_initialized = false;
         self.frame_stats.clear();
@@ -299,6 +320,9 @@ static ROOTS: LazyLock<RwLock<HashMap<CallsiteKey, RootStat>>> =
     LazyLock::new(|| RwLock::new(HashMap::new()));
 static CROSS_MOD_EDGES: LazyLock<RwLock<HashMap<CrossModKey, CrossModStat>>> =
     LazyLock::new(|| RwLock::new(HashMap::new()));
+static PROXY_CHILDREN: LazyLock<RwLock<HashMap<ProxyChildKey, ProxyChildStat>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
+static PROXY_CHILDREN_DROPPED: AtomicU64 = AtomicU64::new(0);
 static FRAME_BOUNDARIES: LazyLock<RwLock<Vec<FrameBoundary>>> =
     LazyLock::new(|| RwLock::new(Vec::new()));
 static FRAMES: LazyLock<RwLock<Vec<FrameStat>>> = LazyLock::new(|| RwLock::new(Vec::new()));
@@ -796,6 +820,9 @@ fn enter_profiled_call(key: CallsiteKey, virtual_name: Option<CName>) -> bool {
         if key.kind == 1 {
             if let Some(name) = virtual_name {
                 if t.virtual_name_seen.insert(key.target) {
+                    if proxy_attribution::is_proxy(name.as_str()) {
+                        t.virtual_proxy_targets.insert(key.target);
+                    }
                     TARGET_NAMES
                         .write()
                         .entry((1, key.target))
@@ -854,6 +881,7 @@ fn enter_profiled_call(key: CallsiteKey, virtual_name: Option<CName>) -> bool {
             frame_id,
             is_root,
             descendant_calls: 0,
+            is_virtual_proxy: key.kind == 1 && t.virtual_proxy_targets.contains(&key.target),
         });
         t.frame_max_depth = t.frame_max_depth.max(t.stack.len() as u32);
         true
@@ -882,6 +910,25 @@ fn exit_profiled_call(expected_key: CallsiteKey, end_qpc: u64) {
 
         if let Some(parent) = t.stack.last_mut() {
             parent.child_ticks = parent.child_ticks.saturating_add(inclusive);
+        }
+
+        // Actual runtime parent->child relationship, NOT a resolved virtual receiver.
+        // Record only direct children of named virtual proxy/wrapper calls.
+        // The key count is strictly bounded per thread and F11 capture.
+        if let Some(parent) = t.stack.last().copied() {
+            if parent.is_virtual_proxy {
+                let edge = ProxyChildKey { proxy: parent.key, child: active.key };
+                if t.proxy_children.contains_key(&edge)
+                    || t.proxy_children.len() < MAX_PROXY_CHILD_KEYS_PER_THREAD
+                {
+                    let e = t.proxy_children.entry(edge).or_default();
+                    e.calls = e.calls.saturating_add(1);
+                    e.inclusive_ticks = e.inclusive_ticks.saturating_add(inclusive);
+                    e.exclusive_ticks = e.exclusive_ticks.saturating_add(exclusive);
+                } else {
+                    t.proxy_children_dropped = t.proxy_children_dropped.saturating_add(1);
+                }
+            }
         }
 
         let state = PROFILE_STATE.load(Ordering::Acquire);
@@ -1130,6 +1177,8 @@ fn merge_all_shards() -> bool {
     FUNCTION_AGG.write().clear();
     ROOTS.write().clear();
     CROSS_MOD_EDGES.write().clear();
+    PROXY_CHILDREN.write().clear();
+    PROXY_CHILDREN_DROPPED.store(0, Ordering::Relaxed);
     FRAMES.write().clear();
     FRAME_OWNERS.write().clear();
 
@@ -1143,6 +1192,7 @@ fn merge_all_shards() -> bool {
         let mut global_callsites = CALLSITES.write();
         let mut global_roots = ROOTS.write();
         let mut global_cross = CROSS_MOD_EDGES.write();
+        let mut global_proxy = PROXY_CHILDREN.write();
 
         for raw in shard_ptrs {
             let ptr = raw as *mut ThreadShard;
@@ -1173,6 +1223,14 @@ fn merge_all_shards() -> bool {
                 let e = global_cross.entry(*key).or_default();
                 e.calls = e.calls.saturating_add(local.calls);
                 e.frame_calls.extend_from_slice(&local.frame_calls);
+            }
+
+            PROXY_CHILDREN_DROPPED.fetch_add(t.proxy_children_dropped, Ordering::Relaxed);
+            for (key, local) in t.proxy_children.iter() {
+                let e = global_proxy.entry(*key).or_default();
+                e.calls = e.calls.saturating_add(local.calls);
+                e.inclusive_ticks = e.inclusive_ticks.saturating_add(local.inclusive_ticks);
+                e.exclusive_ticks = e.exclusive_ticks.saturating_add(local.exclusive_ticks);
             }
 
             for f in t.frames.iter() {
@@ -1522,6 +1580,8 @@ fn clear_measurement_state() {
     FUNCTION_AGG.write().clear();
     ROOTS.write().clear();
     CROSS_MOD_EDGES.write().clear();
+    PROXY_CHILDREN.write().clear();
+    PROXY_CHILDREN_DROPPED.store(0, Ordering::Relaxed);
     FRAME_BOUNDARIES.write().clear();
     FRAMES.write().clear();
     FRAME_OWNERS.write().clear();
@@ -2287,6 +2347,7 @@ fn dump_results() -> std::io::Result<()> {
     callback_pressure::export(&developer_dir)?;
     // Post-F11 unresolved wrapper/proxy diagnostics; no extra runtime hooks.
     proxy_attribution::export(&developer_dir)?;
+    proxy_attribution::export_runtime_children(&developer_dir)?;
 
     write_latest_pointer(&base, &dir)?;
     append_session_index(&base, &dir)?;
