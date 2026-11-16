@@ -5,7 +5,7 @@ param(
   [Parameter(Mandatory=$true)][string]$CompilerArchive,
   [Parameter(Mandatory=$true)][string]$CleanBaselineArchive,
   [Parameter(Mandatory=$true)][string]$EffectiveCacheArchive,
-  [Parameter(Mandatory=$true)][string]$CodewareArchive,
+  [Parameter(Mandatory=$true)][string]$PluginsArchive,
   [Parameter(Mandatory=$true)][string]$ResolverDll
 )
 $ErrorActionPreference='Stop'
@@ -15,7 +15,7 @@ $preview=(Resolve-Path -LiteralPath $PreviewRoot).Path
 $compilerZip=(Resolve-Path -LiteralPath $CompilerArchive).Path
 $baselineZip=(Resolve-Path -LiteralPath $CleanBaselineArchive).Path
 $effectiveZip=(Resolve-Path -LiteralPath $EffectiveCacheArchive -ErrorAction Stop).Path
-$codewareZip=(Resolve-Path -LiteralPath $CodewareArchive -ErrorAction Stop).Path
+$pluginsZip=(Resolve-Path -LiteralPath $PluginsArchive -ErrorAction Stop).Path
 $dll=(Resolve-Path -LiteralPath $ResolverDll).Path
 $plan=Get-Content -LiteralPath (Join-Path $preview 'preview.json') -Raw | ConvertFrom-Json -Depth 80
 if ($plan.schemaVersion -ne 'grsp.generic.preview.v1' -or
@@ -41,11 +41,15 @@ function Invoke-HeadlessScc {
   Set-Content -LiteralPath (Join-Path $IsolatedRoot '.grsp-r6-workspace') -Value 'GRSP_R6_ISOLATED_WORKSPACE' -NoNewline
   New-Item -ItemType Directory -Force -Path (Join-Path $r6 'logs') | Out-Null
   $args=@($dll,'scc-headless','--workspace',$IsolatedRoot,'--r6',$r6,'--cache',$cache,'--compiled',$compiled,'--scc-native',$CompilerLib,'--out',$report,'--log',$privateLog)
-  $externalScripts=Join-Path $IsolatedRoot 'red4ext/plugins/Codeware/Scripts'
+  $externalScripts=Join-Path $IsolatedRoot 'red4ext/plugins'
   if (Test-Path -LiteralPath $externalScripts -PathType Container) {
     $args+=@('--external-scripts',$externalScripts)
   }
-  $expectedExternalPaths=if (Test-Path -LiteralPath $externalScripts -PathType Container) { 1 } else { 0 }
+  $expectedExternalPaths=0
+  if (Test-Path -LiteralPath $externalScripts -PathType Container) {
+    $expectedExternalPaths=@(Get-ChildItem -LiteralPath $externalScripts -Directory |
+      Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'Scripts') -PathType Container }).Count
+  }
   $info=[System.Diagnostics.ProcessStartInfo]::new('dotnet')
   $info.WorkingDirectory=Split-Path $dll -Parent
   $info.UseShellExecute=$false
@@ -161,12 +165,12 @@ try {
   $compilerRoot=Join-Path $work 'compiler'
   $baselineRoot=Join-Path $work 'supplied-base'
   $effectiveRoot=Join-Path $work 'supplied-effective-cache'
-  $codewareRoot=Join-Path $work 'supplied-codeware'
-  New-Item -ItemType Directory -Path @($compilerRoot,$baselineRoot,$effectiveRoot,$codewareRoot) -Force | Out-Null
+  $pluginsRoot=Join-Path $work 'supplied-plugins'
+  New-Item -ItemType Directory -Path @($compilerRoot,$baselineRoot,$effectiveRoot,$pluginsRoot) -Force | Out-Null
   Expand-Archive -LiteralPath $compilerZip -DestinationPath $compilerRoot -ErrorAction Stop
   Expand-Archive -LiteralPath $baselineZip -DestinationPath $baselineRoot -ErrorAction Stop
   Expand-Archive -LiteralPath $effectiveZip -DestinationPath $effectiveRoot -ErrorAction Stop
-  Expand-Archive -LiteralPath $codewareZip -DestinationPath $codewareRoot -ErrorAction Stop
+  Expand-Archive -LiteralPath $pluginsZip -DestinationPath $pluginsRoot -ErrorAction Stop
   $tools=@(Get-ChildItem -LiteralPath $compilerRoot -Recurse -File -Filter 'scc.exe')
   $libs=@(Get-ChildItem -LiteralPath $compilerRoot -Recurse -File -Filter 'scc_lib.dll')
   $bases=@(Get-ChildItem -LiteralPath $baselineRoot -Recurse -File | Where-Object Name -eq 'final.redscripts')
@@ -235,26 +239,33 @@ try {
   }
   $effectiveSha=(Get-FileHash -Algorithm SHA256 -LiteralPath $effectiveFile.FullName).Hash
   Write-Host ('R6 effective-cache candidate admitted for independent compilation experiment: bytes='+$effectiveFile.Length+' differsFromVanilla='+($effectiveSha -ne $baseSha)+' originalVanillaSmokePassed=true')
-  # RED4ext supplies Codeware's extra REDscript declarations at runtime.
-  # Headless SCC does not invoke RED4ext; stage the ORIGINAL read-only
-  # external scripts in both isolated full-stack scenarios, never in the
-  # captured game source, generic preview, or deployable output.
-  $cwCandidates=@(Get-ChildItem -LiteralPath $codewareRoot -Directory -Recurse |
-    Where-Object { $_.Name -eq 'Scripts' -and $_.Parent.Name -eq 'Codeware' })
-  if ($cwCandidates.Count -ne 1) {
-    throw ('R6_CODEWARE_SCRIPTS_ROOT_INVALID: expected one Codeware/Scripts tree, found='+$cwCandidates.Count)
-  }
-  $cwScripts=$cwCandidates[0].FullName
-  $cwFiles=@(Get-ChildItem -LiteralPath $cwScripts -Recurse -File -Filter '*.reds')
-  if ($cwFiles.Count -eq 0) { throw 'R6_CODEWARE_SCRIPTS_MISSING: no actual REDscript declarations' }
-  foreach($file in $cwFiles) {
-    if ($file.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
-      throw 'R6_CODEWARE_REPARSE_POINT_REFUSED'
+  # Discover actual user-provided RED4ext plugin providers; never hardcode mod lists.
+  $scriptDirs=@(Get-ChildItem -LiteralPath $pluginsRoot -Directory -Recurse |
+    Where-Object { $_.Name -eq 'Scripts' -and $_.Parent.Name -ne 'Scripts' -and
+      @(Get-ChildItem -LiteralPath $_.FullName -File -Filter '*.reds' -Recurse).Count -gt 0 })
+  if ($scriptDirs.Count -eq 0) { throw 'R6_PLUGIN_SCRIPT_ARCHIVE_INVALID: no provider Scripts trees' }
+  $providers=@{}
+  foreach($dir in $scriptDirs) {
+    $owner=$dir.Parent.Name
+    if ($providers.ContainsKey($owner)) { throw 'R6_DUPLICATE_SCRIPT_PROVIDER_REFUSED' }
+    if ($owner -notmatch '^[A-Za-z0-9_. -]{1,100}$') { throw 'R6_INVALID_SCRIPT_PROVIDER_NAME' }
+    $files=@(Get-ChildItem -LiteralPath $dir.FullName -File -Recurse)
+    if (@($files | Where-Object { $_.Extension -ne '.reds' -or
+        ($_.Attributes -band [System.IO.FileAttributes]::ReparsePoint) }).Count -gt 0) {
+      throw 'R6_UNSAFE_PLUGIN_SCRIPT_ENTRY'
     }
+    $providers[$owner]=@($files | ForEach-Object {
+      [pscustomobject]@{
+        Relative=[System.IO.Path]::GetRelativePath($dir.FullName,$_.FullName)
+        Source=$_.FullName
+        SHA=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+      }
+    })
   }
-  $cwRelative=@($cwFiles | ForEach-Object { [System.IO.Path]::GetRelativePath($cwScripts,$_.FullName) })
-  $cwOriginalHashes=@($cwFiles | ForEach-Object { (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash })
-  Write-Host ('R6 Codeware external declarations admitted: files='+$cwFiles.Count+' provenance=PRIVATE_USER_ARCHIVE identicalInBothStacks=true viaOfficialSccAdditionalScriptPath=true')
+  if (!$providers.ContainsKey('Codeware')) { throw 'R6_CODEWARE_SCRIPTS_MISSING_FROM_PLUGIN_ARCHIVE' }
+  $totalProviderFiles=@($providers.Values | ForEach-Object { $_ }).Count
+  Write-Host ('R6 native plugin script providers admitted: providers='+$providers.Count+
+    ' files='+$totalProviderFiles+' identicalInBothStacks=true viaOfficialSccAdditionalScriptPath=true')
   $outputs=@()
   foreach($scenario in @('untouched','optimized-preview')) {
     $root=Join-Path $work $scenario
@@ -265,17 +276,18 @@ try {
     foreach($item in @(Get-ChildItem -LiteralPath $liveSources -Force)) {
       Copy-Item -LiteralPath $item.FullName -Destination $scripts -Recurse -Force
     }
-    $cwStage=Join-Path $root 'red4ext/plugins/Codeware/Scripts'
-    if (Test-Path -LiteralPath $cwStage) { throw 'R6_CODEWARE_STAGE_PATH_COLLISION' }
-    New-Item -ItemType Directory -Path $cwStage -Force | Out-Null
-    Copy-Item -Path (Join-Path $cwScripts '*') -Destination $cwStage -Recurse -Force
-    $cwStaged=@(Get-ChildItem -LiteralPath $cwStage -Recurse -File -Filter '*.reds')
-    if ($cwStaged.Count -ne $cwFiles.Count) { throw 'R6_CODEWARE_STAGE_COUNT_MISMATCH' }
-    for($i=0; $i -lt $cwFiles.Count; $i++) {
-      $staged=Join-Path $cwStage $cwRelative[$i]
-      if (!(Test-Path -LiteralPath $staged -PathType Leaf) -or
-          (Get-FileHash -LiteralPath $staged -Algorithm SHA256).Hash -ne $cwOriginalHashes[$i]) {
-        throw 'R6_CODEWARE_STAGE_INTEGRITY_MISMATCH'
+    $pluginStage=Join-Path $root 'red4ext/plugins'
+    foreach($owner in @($providers.Keys | Sort-Object)) {
+      $dest=Join-Path (Join-Path $pluginStage $owner) 'Scripts'
+      if (Test-Path -LiteralPath $dest) { throw 'R6_PLUGIN_STAGE_PATH_COLLISION' }
+      New-Item -ItemType Directory -Force -Path $dest | Out-Null
+      foreach($file in $providers[$owner]) {
+        $target=Join-Path $dest $file.Relative
+        New-Item -ItemType Directory -Force -Path (Split-Path $target -Parent) | Out-Null
+        Copy-Item -LiteralPath $file.Source -Destination $target -Force
+        if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -ne $file.SHA) {
+          throw 'R6_PLUGIN_STAGE_INTEGRITY_MISMATCH'
+        }
       }
     }
     Copy-Item -LiteralPath $effectiveFile.FullName -Destination $cache -Force
@@ -300,8 +312,8 @@ try {
     if ($actualCount -ne $liveCount) {
       throw 'R6 isolated base script source count changed.'
     }
-    if (@(Get-ChildItem -LiteralPath $cwStage -Recurse -File -Filter '*.reds').Count -ne $cwFiles.Count) {
-      throw 'R6 external Codeware script path is incomplete.'
+    if (@(Get-ChildItem -LiteralPath $pluginStage -Recurse -File -Filter '*.reds').Count -ne $totalProviderFiles) {
+      throw 'R6 external plugin source inventory is incomplete.'
     }
     # Same direct native API proven by empty-source smoke, now complete
     # installed source tree. Explicit output path protects the vanilla cache.
