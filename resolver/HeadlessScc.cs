@@ -95,7 +95,10 @@ internal static class HeadlessScc
                             SearchOption.AllDirectories).Any())
                         paths.Add(scriptDir);
                     paths.AddRange(Directory.EnumerateFiles(plugin, "*.reds",
-                            SearchOption.TopDirectoryOnly)
+                            SearchOption.AllDirectories)
+                        .Where(path => !path.StartsWith(scriptDir +
+                            Path.DirectorySeparatorChar,
+                            StringComparison.OrdinalIgnoreCase))
                         .OrderBy(path => path, StringComparer.OrdinalIgnoreCase));
                     return paths;
                 })
