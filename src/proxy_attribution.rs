@@ -36,28 +36,37 @@ pub(super) fn export(developer_dir: &Path) -> std::io::Result<()> {
             .then(b.1.calls.cmp(&a.1.calls))
             .then(a.2.function.cmp(&b.2.function)));
 
+    // One bounded pass over the existing sparse hot-path buffer.
+    // Never scan the whole buffer again per callsite at F11 collection.
+    let mut path_context: HashMap<CallsiteKey, (u64, usize, String)> = HashMap::new();
+    for event in hot_paths.iter() {
+        let Some(&last) = event.path.last() else { continue; };
+        let mut parent = String::new();
+        if event.path.len() >= 2 {
+            let ancestor = event.path[event.path.len() - 2];
+            if let Some(caller) = funcs.get(&ancestor.caller) {
+                parent = format!("{}::{}", caller.owner, caller.function);
+            }
+        }
+        let entry = path_context.entry(last)
+            .or_insert_with(|| (0, 0, String::new()));
+        entry.0 = entry.0.saturating_add(1);
+        entry.1 = entry.1.max(event.path.len());
+        if entry.2.is_empty() {
+            entry.2 = parent;
+        } else if !parent.is_empty() && entry.2 != parent {
+            entry.2 = "MULTIPLE_CAPTURED_PARENTS".to_owned();
+        }
+    }
+
     let mut out = BufWriter::new(File::create(
         developer_dir.join("RSP_ProxyAttribution.csv"))?);
     writeln!(out, "capture_id,stable_callsite_id,source_owner,source_function,source_path,source_line,call_kind,target,target_resolution,attribution_status,outgoing_edges,outgoing_edges_per_sec,exclusive_instrumented_ms,observed_inclusive_ms,max_inclusive_ms,active_frames,max_edges_per_frame,sparse_observed_paths,sparse_observed_max_depth,sparse_observed_parent,hot_paths_dropped_global,receiver_proven,callback_entries_known,causality_proven")?;
 
     for (key, stat, meta, target) in rows {
-        let mut sampled = 0u64;
-        let mut max_depth = 0usize;
-        let mut parent = String::new();
-        for event in hot_paths.iter().filter(|event|
-            event.path.last().is_some_and(|last| last == &key))
-        {
-            sampled += 1;
-            max_depth = max_depth.max(event.path.len());
-            if event.path.len() >= 2 {
-                let ancestor = event.path[event.path.len() - 2];
-                if let Some(caller) = funcs.get(&ancestor.caller) {
-                    let label = format!("{}::{}", caller.owner, caller.function);
-                    if parent.is_empty() { parent = label; }
-                    else if parent != label { parent = "MULTIPLE_CAPTURED_PARENTS".to_owned(); }
-                }
-            }
-        }
+        let (sampled, max_depth, parent) = path_context.get(&key)
+            .map(|(count, depth, parent)| (*count, *depth, parent.as_str()))
+            .unwrap_or((0, 0, ""));
         writeln!(out,
             "{},RSPC-{:016X},{},{},{},{},{},{},{},{},{},{:.3},{:.6},{:.6},{:.6},{},{},{},{},{},{},{},{},{}",
             capture,
