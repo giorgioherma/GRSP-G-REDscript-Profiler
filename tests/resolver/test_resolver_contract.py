@@ -398,6 +398,93 @@ class GrspResolverContracts(unittest.TestCase):
             capture_output=True, text=True, timeout=90)
         return result, root
 
+    def scan_generic(self, analysis=None, target=None):
+        report = target or self.root / 'scan' / 'opportunities.json'
+        cmd = ['dotnet', str(DLL), 'scan-generic',
+               '--game', str(self.game), '--out', str(report)]
+        if analysis is not None:
+            cmd += ['--analysis', str(analysis)]
+        return subprocess.run(
+            cmd, capture_output=True, text=True, timeout=120), report
+
+    def test_source_wide_scanner_identifies_measured_proven_shape_read_only(self):
+        self.prepare_measured_membership()
+        before = self.source.read_bytes()
+        analyzed = self.run_cli()
+        self.assertEqual(0, analyzed.returncode, analyzed.stderr)
+        result, path = self.scan_generic(analysis=self.output)
+        self.assertEqual(0, result.returncode, result.stderr)
+        scan = json.loads(path.read_text())
+        self.assertEqual('grsp.generic.opportunities.v1', scan['schemaVersion'])
+        self.assertEqual('CNAME_ARRAY_MEMBERSHIP_V1', scan['rule'])
+        self.assertEqual(1, scan['sourceFiles'])
+        self.assertEqual(1, scan['candidateLoopsExamined'])
+        self.assertEqual(1, scan['eligibleMeasured'])
+        self.assertEqual(0, scan['eligibleUnmeasured'])
+        self.assertEqual('ELIGIBLE_MEASURED', scan['candidates'][0]['state'])
+        self.assertEqual(300, scan['candidates'][0]['measuredLoopOperatorEdges'])
+        self.assertFalse(scan['candidates'][0]['rewriteAuthorized'])
+        self.assertFalse(scan['generationAuthorized'])
+        self.assertFalse(scan['deployable'])
+        self.assertEqual(0, scan['generatedFiles'])
+        self.assertTrue(scan['pathsOnlyInPrivateLocalReport'])
+        self.assertNotIn('Example.reds', result.stdout)
+        self.assertEqual(before, self.source.read_bytes())
+        self.assertFalse((self.root / 'scan' / 'overlay').exists())
+
+    def test_source_wide_scanner_finds_multiple_unmeasured_mods(self):
+        self.prepare_measured_membership()
+        another = self.game / 'r6/scripts/AnotherOwner/Other.reds'
+        another.parent.mkdir(parents=True)
+        another.write_bytes(self.source.read_bytes())
+        initial = (self.source.read_bytes(), another.read_bytes())
+        result, path = self.scan_generic()
+        self.assertEqual(0, result.returncode, result.stderr)
+        scan = json.loads(path.read_text())
+        self.assertEqual(2, scan['sourceFiles'])
+        self.assertEqual(2, scan['candidateLoopsExamined'])
+        self.assertEqual(2, scan['eligibleUnmeasured'])
+        self.assertEqual(0, scan['eligibleMeasured'])
+        self.assertEqual({'AnotherOwner', 'Example'},
+                         {x['owner'] for x in scan['candidates']})
+        self.assertEqual('NOT_CAPTURED', scan['evidenceKind'])
+        self.assertEqual(initial, (self.source.read_bytes(), another.read_bytes()))
+
+    def test_source_wide_scanner_refuses_side_effects_and_fake_text_hits(self):
+        self.prepare_measured_membership(
+            lambda s: s.replace('matched = true;',
+                                'DoSomething();\\n        matched = true;'))
+        self.source.write_text(
+            self.source.read_text() + '\\n// for entry in this.names { if Equals(x, y) {} }\\n'
+            '// "for entry in this.names { if Equals(x, y) {} }"\\n')
+        result, path = self.scan_generic()
+        self.assertEqual(0, result.returncode, result.stderr)
+        scan = json.loads(path.read_text())
+        self.assertEqual(1, scan['candidateLoopsExamined'])
+        self.assertEqual(1, scan['rejectedUnproven'])
+        self.assertEqual(0, scan['structuralMatches'])
+        self.assertEqual('REJECTED_UNPROVEN', scan['candidates'][0]['state'])
+
+    def test_source_wide_scanner_refuses_stale_capture_and_unsafe_output(self):
+        self.prepare_measured_membership()
+        self.assertEqual(0, self.run_cli().returncode)
+        self.source.write_text(self.source.read_text() + '// source drift\\n')
+        refused, path = self.scan_generic(analysis=self.output)
+        self.assertNotEqual(0, refused.returncode)
+        self.assertIn('SOURCE_DRIFT_DETECTED', refused.stderr)
+        self.assertFalse(path.exists())
+        original = self.source.read_bytes()
+        refused, _ = self.scan_generic(target=self.game / 'bad.json')
+        self.assertNotEqual(0, refused.returncode)
+        self.assertIn('SCAN_OUTPUT_NOT_ISOLATED', refused.stderr)
+        self.assertFalse((self.game / 'bad.json').exists())
+        sentinel = self.root / 'existing.json'
+        sentinel.write_text('keep')
+        refused, _ = self.scan_generic(target=sentinel)
+        self.assertNotEqual(0, refused.returncode)
+        self.assertEqual('keep', sentinel.read_text())
+        self.assertEqual(original, self.source.read_bytes())
+
     def test_measured_generic_membership_is_staged_only_and_idempotent(self):
         self.prepare_measured_membership()
         original = self.source.read_bytes()
