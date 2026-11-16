@@ -10,14 +10,14 @@
 | --- | --- | --- |
 | R0 owner contract | Documentation setup | GRSP owns Resolver/Generator/compiler; GCO owns coordination/merge; verify both repo handoffs |
 | R1 private approved reference inventory | NOT STARTED | Index 61 paths/owners/provenance only; **no semantic implementation before generics** |
-| R2 fresh capture analysis | MEASURED SHORTLIST; SOURCE PROOF PENDING | Verified one new complete 309.6 s WORLD three-profiler capture, analyzed full GRSP developer CSVs; live source identity, attribution, multiple scenarios still pending; see [audit](MEASURED-GENERIC-OPPORTUNITIES-2026-11-15.md) |
+| R2 fresh capture analysis | 15:51 CAPTURE + CURRENT SOURCE 2,319-FILE PROVEN; SCENARIO REPEATS PENDING | Verified one new complete 309.6 s WORLD three-profiler capture, analyzed full GRSP developer CSVs; live source identity, attribution, multiple scenarios still pending; see [audit](MEASURED-GENERIC-OPPORTUNITIES-2026-11-15.md) |
 | R3 REDscript Resolver JSON | REAL FULL .NET10 15:51 REPLAY GCO #446 SUCCESS | GRSP-owned versioned full raw CSV + PresentMon evidence JSON; real private replay not yet executed in .NET |
-| R4 source admission | 2,319/2,319 SOURCE INDEXED + DRIFT SHA CI #14 PASS; STATE/RECEIVER UNPROVEN | Source span/name + SHA diagnostics only; pass-specific pristine/partial/complete states still pending |
-| R5 source-wide measured generic passes FIRST | REAL 1-FILE GENERIC PREVIEW GCO #447 PASS; SCC PENDING | Fresh data → rank generic opportunities across installed mods → compile/idempotent validated pass output |
+| R4 source admission | 2,319 INDEXED; SOURCE-WIDE DISCOVERY PASS; SEMANTIC/RECEIVER PROOF PARTIAL | Source span/name + SHA diagnostics only; pass-specific pristine/partial/complete states still pending |
+| R5 source-wide measured generic passes FIRST | 1 REAL SCC-VALIDATED PREVIEW, 48 DISCOVERED LOOP SHAPES (47 REJECTED) | Fresh data → rank generic opportunities across installed mods → compile/idempotent validated pass output |
 | R6 GRSP/G-REDruntime generic enablers | CONDITIONAL | Interleave with R2–R5 as needed to unlock generic value; verify native overhead/runtime contracts |
 | R7 generic-output gap matrix then semantic remainder | BLOCKED BY GENERIC COVERAGE | After validated generics classify all 61 per operation; implement only structural SEMANTIC_REMAINDER; zero is valid |
-| R8 compile and output proof | NOT STARTED | Actual full effective stack + source-state/idempotence/negative tests |
-| R9 GCO integration | NOT STARTED | .NET10 headless contract, one CI and real output, preserve CET |
+| R8 compile and output proof | BOTH FULL REAL SCC COMPILES PASS; SOURCE-STATE AND OUTPUT GATES PENDING | Actual full effective stack + source-state/idempotence/negative tests |
+| R9 GCO integration | HEADLESS OWNER CLI IN GCO PRIVATE CI; PRODUCT INTEGRATION PENDING | .NET10 headless contract, one CI and real output, preserve CET |
 | R10 combined ZIP/gameplay | NOT STARTED | GCO collision-safe merged ZIP, game validation, fresh before/after |
 
 ## Change log and agent protocol
@@ -231,3 +231,10 @@
 - **[GRSP managed Resolver CI #57 SUCCESS](https://github.com/giorgioherma/GRSP-G-REDscript-Profiler/actions/runs/43791265663): .NET 10 build and 40/40 actual Python-driven CLI tests**, including new measured and unmeasured across multiple owners, side-effect/false-text refusal, stale capture/drift and no-write/overwrite safety. Prior `preview-generic` and source-owned SCC code remain intact.
 - GCO feature pin `3fad8b5ce595b39853005c6c30006c24c244068e` adds real sealed capture + private 2,319-file scanner verification with measured vs source-only consistency and no source writes in the **existing canonical CI #479**. Original SCC full-stack compiler contract unchanged. At documentation entry, the private replay step completed and subsequent full package workflow was still running; record exact final CI conclusion separately.
 - **Next:** inspect actual whole-stack discovery counts, validate measured vs structural candidate owner identities and revisit semantics/equality proof before authorizing expansion of the generator. Continue measured generic-first R5 and optional instrumentation R6; R7 61-file semantic remainder stays deferred. Gameplay and actual performance delta remain untested.
+
+### 2026-11-16 — GCO #479 real 2,319-file source-wide opportunity result
+
+- **[GCO feature CI #479 SUCCESS](https://github.com/giorgioherma/Gs-Cyberpunk2077_Optimizations/actions/runs/43791492299)** source `3fad8b5ce595b39853005c6c30006c24c244068e`, pinned owner source `c5c1a461b7ae4716f123b8e4d0708921848d9f67`. Owner scanner ran against the real source-matched GCO-indexed 15:51 capture and separately without a capture: structural candidate counts were consistent and only the measured run attributed real call-edge counts.
+- **Actual private discovery:** 2,319 `.reds` indexed; **48** narrow CName loop shapes inspected, **1** safely shape-matched and measured, **0** additional structural matches without measurements, **47** rejected/unproven. The single existing measured Custom Quickslots preview remains the only compiler-validated CName rule application. No attempt made to rewrite or compile any of the 47 rejections.
+- **Compilers/regressions:** native SCC 0.5.31 empty smoke PASS, original full stack exit 0, optimized one-file full stack exit 0, outputs distinct and user sources unchanged; existing GCO 323 installation/CLI/package contracts PASS. GCO artifact upload completed, but contains ordinary app, **not** generated REDscript optimizer output. No gameplay or before/after savings accepted.
+- **Next:** refine per-prerequisite rejection evidence and compare actual measured generic opportunities before choosing to widen this one rule. Preserve fail-closed R4 proof and generic-first R5/R6 sequence; R7 portfolio semantics not started.
