@@ -222,8 +222,6 @@ struct ReadPressure {
     callsites: u64,
     callers: HashSet<usize>,
     owners: HashSet<u64>,
-    frames: HashMap<u64, ReadFrame>,
-    dropped_frames: u64,
 }
 
 fn read_like_target(name: &str) -> bool {
@@ -251,7 +249,7 @@ fn export_shared_reads(
     callsites: &HashMap<CallsiteKey, AggStat>,
 ) -> std::io::Result<()> {
     const MAX_GROUPS: usize = 128;
-    const MAX_FRAME_KEYS: usize = 200_000;
+    const MAX_FRAME_KEYS_PER_TARGET: usize = 65_536;
     let mut groups: HashMap<ReadTarget, ReadPressure> = HashMap::new();
     for (key, stat) in callsites {
         let Some(meta) = funcs.get(&key.caller) else { continue };
@@ -279,39 +277,38 @@ fn export_shared_reads(
     let admitted: HashSet<ReadTarget> = selected.iter().map(|row| row.0).collect();
     groups.retain(|key, _| admitted.contains(key));
 
-    let mut frame_keys = 0usize;
-    for (key, stat) in callsites {
-        let Some(group) = groups.get_mut(&ReadTarget {
-            kind: key.kind, target: key.target
-        }) else { continue };
-        let Some(meta) = funcs.get(&key.caller) else { continue };
-        if !meta.is_mod_source || family(&meta.function).is_none() { continue }
-        for &(frame, calls) in &stat.frame_calls {
-            if let Some(row) = group.frames.get_mut(&frame) {
-                row.add(key.caller, meta.owner_hash, calls);
-            } else if frame_keys < MAX_FRAME_KEYS {
-                let mut row = ReadFrame::default();
-                row.add(key.caller, meta.owner_hash, calls);
-                group.frames.insert(frame, row);
-                frame_keys += 1;
-            } else {
-                group.dropped_frames = group.dropped_frames.saturating_add(1);
-            }
-        }
-    }
-
     let mut writer = BufWriter::new(File::create(
         output.join("RSP_CallbackReuse.csv"))?);
     writeln!(writer, "capture_id,read_target_id,call_kind,target,target_resolution,read_candidate_class,callback_source_functions,source_owners,source_callsites,outgoing_edges,edges_per_sec,exclusive_instrumented_ms,observed_active_frames,same_frame_extra_edges,multi_callback_source_frames,multi_owner_frames,max_edges_per_frame,frame_evidence_status,dropped_frame_rows,callback_entries_proven,cache_safe_proven")?;
     for (key, _, _) in selected {
         let Some(row) = groups.get(&key) else { continue };
-        let extra = row.frames.values().map(|r| r.calls.saturating_sub(1))
+        // One target at a time. Release its frame map before the next one:
+        // unrelated targets cannot exhaust a global evidence budget.
+        let mut frames: HashMap<u64, ReadFrame> = HashMap::new();
+        let mut dropped_frames = 0u64;
+        for (site, stat) in callsites {
+            if site.kind != key.kind || site.target != key.target { continue }
+            let Some(meta) = funcs.get(&site.caller) else { continue };
+            if !meta.is_mod_source || family(&meta.function).is_none() { continue }
+            for &(frame, calls) in &stat.frame_calls {
+                if let Some(r) = frames.get_mut(&frame) {
+                    r.add(site.caller, meta.owner_hash, calls);
+                } else if frames.len() < MAX_FRAME_KEYS_PER_TARGET {
+                    let mut r = ReadFrame::default();
+                    r.add(site.caller, meta.owner_hash, calls);
+                    frames.insert(frame, r);
+                } else {
+                    dropped_frames = dropped_frames.saturating_add(1);
+                }
+            }
+        }
+        let extra = frames.values().map(|r| r.calls.saturating_sub(1))
             .fold(0u64, u64::saturating_add);
-        let multiple_callbacks = row.frames.values()
+        let multiple_callbacks = frames.values()
             .filter(|r| r.multiple_callers).count();
-        let multiple_owners = row.frames.values()
+        let multiple_owners = frames.values()
             .filter(|r| r.multiple_owners).count();
-        let max = row.frames.values().map(|r| r.calls).max().unwrap_or(0);
+        let max = frames.values().map(|r| r.calls).max().unwrap_or(0);
         let id = stable_hash64(&format!("{}|{}", call_kind(key.kind), row.name));
         writeln!(writer,
             "{},RSPR-{:016X},{},{},{},{},{},{},{},{},{:.3},{:.6},{},{},{},{},{},{},{},false,false",
@@ -319,10 +316,10 @@ fn export_shared_reads(
             csv(&row.name), row.resolution, read_class(&row.name),
             row.callers.len(), row.owners.len(), row.callsites,
             row.calls, rate(row.calls, capture_duration_s()),
-            ticks_to_ms(row.ticks), row.frames.len(), extra,
+            ticks_to_ms(row.ticks), frames.len(), extra,
             multiple_callbacks, multiple_owners, max,
-            if row.dropped_frames > 0 { "TRUNCATED_NOT_ZERO_WORK" }
-            else { "CAPTURED_FRAME_OVERLAP" }, row.dropped_frames)?;
+            if dropped_frames > 0 { "TRUNCATED_NOT_ZERO_WORK" }
+            else { "CAPTURED_FRAME_OVERLAP" }, dropped_frames)?;
     }
     writer.flush()
 }
