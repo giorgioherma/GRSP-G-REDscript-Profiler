@@ -75,17 +75,30 @@ internal static class HeadlessScc
                    StringComparison.OrdinalIgnoreCase) ||
               !Directory.Exists(externalScripts) ||
               !Directory.EnumerateDirectories(externalScripts)
-                  .Any(plugin => Directory.Exists(Path.Combine(plugin, "Scripts"))))))
+                  .Any(plugin => Directory.EnumerateFiles(plugin, "*.reds",
+                      SearchOption.AllDirectories).Any()))))
             throw new InvalidDataException(
                 "Headless SCC requires an untouched, explicitly isolated source/cache workspace");
 
+        // Native RED4ext adds both directory and file paths: Codeware's
+        // Scripts/ tree as a directory; Mod Settings packed.reds and
+        // module.reds as individual files from its plugin root.
         string[] additionalScriptPaths = externalScripts is null ? Array.Empty<string>() :
             Directory.EnumerateDirectories(externalScripts)
-                .Select(plugin => Path.Combine(plugin, "Scripts"))
-                .Where(Directory.Exists)
-                .Where(path => Directory.EnumerateFiles(path, "*.reds",
-                    SearchOption.AllDirectories).Any())
                 .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .SelectMany(plugin =>
+                {
+                    string scriptDir = Path.Combine(plugin, "Scripts");
+                    var paths = new List<string>();
+                    if (Directory.Exists(scriptDir) &&
+                        Directory.EnumerateFiles(scriptDir, "*.reds",
+                            SearchOption.AllDirectories).Any())
+                        paths.Add(scriptDir);
+                    paths.AddRange(Directory.EnumerateFiles(plugin, "*.reds",
+                            SearchOption.TopDirectoryOnly)
+                        .OrderBy(path => path, StringComparer.OrdinalIgnoreCase));
+                    return paths;
+                })
                 .ToArray();
         Directory.CreateDirectory(Path.Combine(r6, "logs"));
         Directory.CreateDirectory(Path.GetDirectoryName(log)!);
