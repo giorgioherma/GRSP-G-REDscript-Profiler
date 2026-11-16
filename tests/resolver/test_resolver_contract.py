@@ -483,7 +483,7 @@ class GrspResolverContracts(unittest.TestCase):
              'let matched: Bool = true;',
              'FALSE_BOOL_DECLARATION_MISSING'),
             ('side_effect', 'matched = true;',
-             'DoSomething();\\n        matched = true;',
+             'DoSomething();\n        matched = true;',
              'LOOP_BODY_NOT_EXACT_MEMBERSHIP'),
         ]
         for name, old, new, expected in cases:
