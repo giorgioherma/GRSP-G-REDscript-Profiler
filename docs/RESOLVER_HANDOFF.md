@@ -54,9 +54,9 @@ Preserve callback order, native/REDscript execution cadence, return and side eff
 - If a reusable optimization requires missing measurement or shared scheduling/cache services, evolve GRSP/G-REDruntime at their respective sources before/during generic work; do not turn that missing evidence into guessed semantics.
 - All decisions, including unproven candidates and exclusion reasons, must be logged promptly in GRSP and GCO progress/decision handoffs.
 
-## First development checkpoint
+## Historical first development checkpoint (no longer a GRSP managed task)
 
-Audit **fresh complete GRSP raw outputs** and source structure for the highest-value broadly applicable generic rule families; do not assume historical G0/G1 priority or a 61-file semantic queue. Add only the demonstrably missing instrumentation in this GRSP branch, with regression tests and proof of bounded recording overhead. Leave `main`, public 1.0.0 release and the G-REdruntime `main` unchanged. The unified GCO app and its REDscript development branch **already exist**; the GRSP REDscript Resolver/Generator implementation is **not yet created**.
+Continue **only GRSP-native measurement/instrumentation work here** when GCO-local generic optimization needs evidence. The source-audited generic Resolver/Generator and its SCC tests belong in GCO `dev/redscript/resolver_handoff`. The original November 15 checkpoint was completed historically and is not a new GRSP managed task. Protect GRSP `main` and standalone v1.0.0.
 
 **Status:** architecture and handoff recorded; no new profiler instrumentation or REDscript optimization has yet been implemented, compiled or gameplay-validated.
 
