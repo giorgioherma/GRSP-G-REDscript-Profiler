@@ -326,3 +326,39 @@ fn export_shared_reads(
     }
     writer.flush()
 }
+
+#[cfg(test)]
+mod callback_reuse_tests {
+    use super::*;
+
+    #[test]
+    fn selects_source_read_shapes_without_granting_cache_safety() {
+        assert!(read_like_target("ScriptGameInstance::GetPlayerSystem"));
+        assert!(read_like_target("gameinputScriptListenerAction::GetName"));
+        assert!(read_like_target("PlayerPuppet::IsInCombat"));
+        assert!(!read_like_target("OperatorLess"));
+        assert!(!read_like_target("Get"));
+        assert!(!read_like_target("Foo::SetData"));
+        assert!(!read_like_target("proxy$5021"));
+        assert_eq!(read_class("gameinputScriptListenerAction::GetName"),
+            "EVENT_ARGUMENT_READ");
+        assert_eq!(read_class("ScriptGameInstance::GetTimeSystem"),
+            "SHARED_SYSTEM_OR_CONTEXT_READ");
+    }
+
+    #[test]
+    fn repeated_reads_are_frame_overlaps_not_proven_redundant_calls() {
+        let mut frame = ReadFrame::default();
+        frame.add(1, 11, 3);
+        frame.add(1, 11, 2);
+        assert_eq!(frame.calls, 5);
+        assert!(!frame.multiple_callers);
+        assert!(!frame.multiple_owners);
+        frame.add(2, 11, 4);
+        assert!(frame.multiple_callers);
+        assert!(!frame.multiple_owners);
+        frame.add(3, 12, 1);
+        assert!(frame.multiple_owners);
+        assert_eq!(frame.calls.saturating_sub(1), 9);
+    }
+}
