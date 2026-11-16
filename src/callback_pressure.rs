@@ -157,7 +157,8 @@ pub(super) fn export(developer_dir: &Path) -> std::io::Result<()> {
                 "OBSERVED_CALL_EDGE_NOT_CALLBACK_ENTRY"
             })?;
     }
-    detail.flush()
+    detail.flush()?;
+    export_shared_reads(developer_dir, &funcs, &targets, &callsites)
 }
 
 #[cfg(test)]
@@ -183,4 +184,145 @@ mod tests {
         let values = HashMap::from([(1, 2), (2, 1), (3, 30), (4, 9), (5, 4)]);
         assert_eq!(frame_pressure(&values), (5, 9, 30, 4));
     }
+}
+
+// CET-style repeated-read discovery across all callback-like source functions.
+// The existing per-callsite, per-frame counts provide this after F11 STOP,
+// without another VM hook, extra hot-path allocation or generated REDscript.
+#[derive(Clone, Copy, Eq, PartialEq, Hash)]
+struct ReadTarget { kind: u8, target: u64 }
+
+#[derive(Default)]
+struct ReadFrame {
+    calls: u64,
+    first_caller: usize,
+    first_owner: u64,
+    multiple_callers: bool,
+    multiple_owners: bool,
+}
+impl ReadFrame {
+    fn add(&mut self, caller: usize, owner: u64, calls: u64) {
+        if self.calls == 0 {
+            self.first_caller = caller;
+            self.first_owner = owner;
+        } else {
+            self.multiple_callers |= caller != self.first_caller;
+            self.multiple_owners |= owner != self.first_owner;
+        }
+        self.calls = self.calls.saturating_add(calls);
+    }
+}
+
+#[derive(Default)]
+struct ReadPressure {
+    name: String,
+    resolution: &'static str,
+    calls: u64,
+    ticks: u64,
+    callsites: u64,
+    callers: HashSet<usize>,
+    owners: HashSet<u64>,
+    frames: HashMap<u64, ReadFrame>,
+    dropped_frames: u64,
+}
+
+fn read_like_target(name: &str) -> bool {
+    let last = name.rsplit("::").next().unwrap_or(name);
+    let method = last.split(';').next().unwrap_or(last);
+    ["Get", "Is", "Has", "Find", "Query"].iter().any(|prefix|
+        method.strip_prefix(prefix).is_some_and(|suffix|
+            suffix.chars().next().is_some_and(|c| c.is_ascii_uppercase())))
+}
+
+fn read_class(name: &str) -> &'static str {
+    if name.contains("ScriptListenerAction") ||
+        name.contains("inputScriptListenerAction") { "EVENT_ARGUMENT_READ" }
+    else if name.contains("GameInstance::Get") {
+        "SHARED_SYSTEM_OR_CONTEXT_READ"
+    } else if name.contains("PlayerPuppet::") {
+        "PLAYER_LIFETIME_SENSITIVE_READ"
+    } else { "READ_LIKE_PURITY_UNKNOWN" }
+}
+
+fn export_shared_reads(
+    output: &Path,
+    funcs: &HashMap<usize, FunctionMeta>,
+    names: &HashMap<(u8, u64), String>,
+    callsites: &HashMap<CallsiteKey, AggStat>,
+) -> std::io::Result<()> {
+    const MAX_GROUPS: usize = 128;
+    const MAX_FRAME_KEYS: usize = 200_000;
+    let mut groups: HashMap<ReadTarget, ReadPressure> = HashMap::new();
+    for (key, stat) in callsites {
+        let Some(meta) = funcs.get(&key.caller) else { continue };
+        if !meta.is_mod_source || family(&meta.function).is_none() { continue }
+        let target = target_info(*key, funcs, names);
+        if target.resolution.starts_with("UNRESOLVED") ||
+            !read_like_target(&target.display) { continue }
+        let row = groups.entry(ReadTarget { kind: key.kind, target: key.target })
+            .or_default();
+        if row.name.is_empty() {
+            row.name = target.display;
+            row.resolution = target.resolution;
+        }
+        row.calls = row.calls.saturating_add(stat.calls);
+        row.ticks = row.ticks.saturating_add(stat.exclusive_ticks);
+        row.callsites = row.callsites.saturating_add(1);
+        row.callers.insert(key.caller);
+        row.owners.insert(meta.owner_hash);
+    }
+    let mut selected: Vec<_> = groups.iter().filter(|(_, r)| r.calls >= 300)
+        .map(|(key, r)| (*key, r.calls, r.ticks)).collect();
+    selected.sort_by(|a, b| b.1.cmp(&a.1).then(b.2.cmp(&a.2))
+        .then(a.0.kind.cmp(&b.0.kind)).then(a.0.target.cmp(&b.0.target)));
+    selected.truncate(MAX_GROUPS);
+    let admitted: HashSet<ReadTarget> = selected.iter().map(|row| row.0).collect();
+    groups.retain(|key, _| admitted.contains(key));
+
+    let mut frame_keys = 0usize;
+    for (key, stat) in callsites {
+        let Some(group) = groups.get_mut(&ReadTarget {
+            kind: key.kind, target: key.target
+        }) else { continue };
+        let Some(meta) = funcs.get(&key.caller) else { continue };
+        if !meta.is_mod_source || family(&meta.function).is_none() { continue }
+        for &(frame, calls) in &stat.frame_calls {
+            if let Some(row) = group.frames.get_mut(&frame) {
+                row.add(key.caller, meta.owner_hash, calls);
+            } else if frame_keys < MAX_FRAME_KEYS {
+                let mut row = ReadFrame::default();
+                row.add(key.caller, meta.owner_hash, calls);
+                group.frames.insert(frame, row);
+                frame_keys += 1;
+            } else {
+                group.dropped_frames = group.dropped_frames.saturating_add(1);
+            }
+        }
+    }
+
+    let mut writer = BufWriter::new(File::create(
+        output.join("RSP_CallbackReuse.csv"))?);
+    writeln!(writer, "capture_id,read_target_id,call_kind,target,target_resolution,read_candidate_class,callback_source_functions,source_owners,source_callsites,outgoing_edges,edges_per_sec,exclusive_instrumented_ms,observed_active_frames,same_frame_extra_edges,multi_callback_source_frames,multi_owner_frames,max_edges_per_frame,frame_evidence_status,dropped_frame_rows,callback_entries_proven,cache_safe_proven")?;
+    for (key, _, _) in selected {
+        let Some(row) = groups.get(&key) else { continue };
+        let extra = row.frames.values().map(|r| r.calls.saturating_sub(1))
+            .fold(0u64, u64::saturating_add);
+        let multiple_callbacks = row.frames.values()
+            .filter(|r| r.multiple_callers).count();
+        let multiple_owners = row.frames.values()
+            .filter(|r| r.multiple_owners).count();
+        let max = row.frames.values().map(|r| r.calls).max().unwrap_or(0);
+        let id = stable_hash64(&format!("{}|{}", call_kind(key.kind), row.name));
+        writeln!(writer,
+            "{},RSPR-{:016X},{},{},{},{},{},{},{},{},{:.3},{:.6},{},{},{},{},{},{},{},false,false",
+            CAPTURE_ID.load(Ordering::Relaxed), id, call_kind(key.kind),
+            csv(&row.name), row.resolution, read_class(&row.name),
+            row.callers.len(), row.owners.len(), row.callsites,
+            row.calls, rate(row.calls, capture_duration_s()),
+            ticks_to_ms(row.ticks), row.frames.len(), extra,
+            multiple_callbacks, multiple_owners, max,
+            if row.dropped_frames > 0 { "TRUNCATED_NOT_ZERO_WORK" }
+            else { "CAPTURED_FRAME_OVERLAP" }, row.dropped_frames)?;
+    }
+    writer.flush()
 }
