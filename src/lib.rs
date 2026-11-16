@@ -3922,3 +3922,48 @@ struct SourceFileInfo {
 }
 
 const_assert_eq!(mem::size_of::<SourceFileInfo>(), 72);
+
+#[cfg(test)]
+mod hook_bookkeeping_safety_tests {
+    use super::*;
+
+    #[test]
+    fn bookkeeping_guard_refuses_reentrant_entry_and_resets() {
+        let executed = Cell::new(0);
+        assert_eq!(with_profile_bookkeeping(|| {
+            executed.set(executed.get() + 1);
+            assert!(with_profile_bookkeeping(|| {
+                executed.set(executed.get() + 100);
+            }).is_none());
+            executed.get()
+        }), Some(1));
+        assert_eq!(with_profile_bookkeeping(|| 7), Some(7));
+        assert_eq!(executed.get(), 1);
+    }
+
+    #[test]
+    fn bounded_proxy_counters_have_capacity_before_records() {
+        let mut shard = ThreadState::default();
+        shard.proxy_children.reserve(MAX_PROXY_CHILD_KEYS_PER_THREAD);
+        shard.virtual_proxy_targets.reserve(MAX_PROXY_TARGETS_PER_THREAD);
+        let child_capacity = shard.proxy_children.capacity();
+        let name_capacity = shard.virtual_proxy_targets.capacity();
+        assert!(child_capacity >= MAX_PROXY_CHILD_KEYS_PER_THREAD);
+        assert!(name_capacity >= MAX_PROXY_TARGETS_PER_THREAD);
+        let parent = CallsiteKey { caller: 1, line: 2, kind: 1, target: 3 };
+        for n in 0..MAX_PROXY_CHILD_KEYS_PER_THREAD {
+            let child = CallsiteKey {
+                caller: n + 4, line: 5, kind: 0, target: 6
+            };
+            proxy_attribution::record_child(
+                &mut shard.proxy_children, &mut shard.proxy_children_dropped,
+                ProxyChildKey { proxy: parent, child }, 10, 7,
+                MAX_PROXY_CHILD_KEYS_PER_THREAD
+            );
+        }
+        assert_eq!(shard.proxy_children.len(), MAX_PROXY_CHILD_KEYS_PER_THREAD);
+        assert_eq!(shard.proxy_children.capacity(), child_capacity);
+        assert_eq!(shard.proxy_children_dropped, 0);
+        assert_eq!(shard.virtual_proxy_targets.capacity(), name_capacity);
+    }
+}
