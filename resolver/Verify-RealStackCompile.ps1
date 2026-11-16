@@ -90,24 +90,32 @@ function Invoke-HeadlessScc {
       # Never print the underlying private source or path. The native error
       # is retained only as an isolated-runner diagnostic.
       $safeUnresolved='NOT_IDENTIFIED'
+      $locationParsed=$false
       if (Test-Path -LiteralPath $privateLog -PathType Leaf) {
-        $diagnosticLines=@(Get-Content -LiteralPath $privateLog)
-        for($i=1; $i -lt $diagnosticLines.Count; $i++) {
-          $underline=[string]$diagnosticLines[$i]
-          $start=$underline.IndexOf('^')
-          if ($start -lt 0) { continue }
-          $sourceLine=[string]$diagnosticLines[$i-1]
-          if ($start -ge $sourceLine.Length) { continue }
-          $end=$start
-          while($end -lt $underline.Length -and $underline[$end] -eq '^') { $end++ }
-          $candidate=$sourceLine.Substring($start,[Math]::Min($end-$start,$sourceLine.Length-$start)).Trim()
-          if ($candidate -cmatch '^[A-Za-z_][A-Za-z0-9_]{0,100}$') {
-            $safeUnresolved=$candidate
-            break
+        $diagnostic=Get-Content -LiteralPath $privateLog -Raw
+        # Native SCC diagnostic format: [UNRESOLVED_REF] At <private-path>.reds:line:column
+        # The private path and source line MUST never leave the runner.
+        $position=[regex]::Match($diagnostic,'(?i)\bAt\s+(.+?\.reds):(\d+):(\d+)')
+        if ($position.Success) {
+          $locationParsed=$true
+          $filePath=$position.Groups[1].Value
+          $lineNo=[int]$position.Groups[2].Value
+          $columnNo=[int]$position.Groups[3].Value
+          if ((Test-Path -LiteralPath $filePath -PathType Leaf) -and $lineNo -gt 0 -and $columnNo -gt 0) {
+            $sourceLine=@(Get-Content -LiteralPath $filePath)[$lineNo-1]
+            if ($null -ne $sourceLine) {
+              $columnIndex=$columnNo-1
+              foreach($match in [regex]::Matches([string]$sourceLine,'[A-Za-z_][A-Za-z0-9_]*')) {
+                if ($match.Index -le $columnIndex -and $columnIndex -lt ($match.Index+$match.Length)) {
+                  if ($match.Value.Length -le 100) { $safeUnresolved=$match.Value }
+                  break
+                }
+              }
+            }
           }
         }
       }
-      throw ('R6_HEADLESS_SCC_COMPILATION_FAILED: phase='+$Phase+' errorCodes='+$safeCodes+' unresolvedIdentifier='+$safeUnresolved+' diagnosticBytes='+$result.diagnosticBytes+' rawErrorsRunnerPrivate=true')
+      throw ('R6_HEADLESS_SCC_COMPILATION_FAILED: phase='+$Phase+' errorCodes='+$safeCodes+' unresolvedIdentifier='+$safeUnresolved+' locationParsed='+$locationParsed+' diagnosticBytes='+$result.diagnosticBytes+' rawErrorsRunnerPrivate=true')
     }
     if ($result.generatedOutputPresent -ne $true -or
         [long]$result.generatedOutputBytes -lt 1048576) {
