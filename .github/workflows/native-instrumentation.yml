@@ -74,7 +74,7 @@ jobs:
             throw 'GRSP native output is not a Windows PE binary'
           }
           $asText=[Text.Encoding]::ASCII.GetString($bytes)
-          foreach($name in @('RSP_CallbackPressure.csv','RSP_CallbackTargets.csv','RSP_ProxyAttribution.csv','RSP_ProxyChildren.csv','GCO-F11-Complete.flag')) {
+          foreach($name in @('RSP_CallbackPressure.csv','RSP_CallbackTargets.csv','RSP_CallbackReuse.csv','RSP_ProxyAttribution.csv','RSP_ProxyChildren.csv','GCO-F11-Complete.flag')) {
             if (!$asText.Contains($name)) { throw "Native DLL does not embed developer writer $name" }
           }
           $folder='instrumentation-native-artifact'
