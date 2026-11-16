@@ -249,17 +249,31 @@ internal static class GenericMembershipPass
     // A missing captured function permits inspection, never rewrite authority.
     internal static bool HasSourceShape(
         string text, IReadOnlyList<SourceAdmission.Token> tokens, int line) =>
-        TryMatch(text, tokens, line, null) is not null;
+        TryMatch(text, tokens, line, null, out _) is not null;
+
+    // Diagnostic is derived from the SAME authoritative admission function.
+    // This never expands rewrite eligibility; "ELIGIBLE" only proves syntax shape.
+    internal static string SourceShapeReason(
+        string text, IReadOnlyList<SourceAdmission.Token> tokens, int line)
+    {
+        _ = TryMatch(text, tokens, line, null, out string reason);
+        return reason;
+    }
 
     private static Match? TryMatch(
         string text, IReadOnlyList<SourceAdmission.Token> t,
-        int line, string? function)
+        int line, string? function) => TryMatch(text, t, line, function, out _);
+
+    private static Match? TryMatch(
+        string text, IReadOnlyList<SourceAdmission.Token> t,
+        int line, string? function, out string rejection)
     {
+        rejection = "ELIGIBLE";
         var eligible = Enumerable.Range(0, t.Count)
             .Where(i => t[i].Value == "for" && t[i].Line == line).ToArray();
-        if (eligible.Length != 1) return null;
+        if (eligible.Length != 1) { rejection = "FOR_LINE_NOT_UNIQUE"; return null; }
         int i = eligible[0];
-        if (i + 22 >= t.Count) return null;
+        if (i + 22 >= t.Count) { rejection = "LOOP_TOKENS_TRUNCATED"; return null; }
         static bool Ident(string value) =>
             value.Length > 0 && (char.IsLetter(value[0]) || value[0] == '_') &&
             value.All(c => char.IsLetterOrDigit(c) || c == '_');
@@ -270,7 +284,7 @@ internal static class GenericMembershipPass
         string flag = t[i + 15].Value;
         if (!Ident(member) || !Ident(field) || !Ident(value) || !Ident(flag) ||
             member == flag || member == value || value == flag)
-            return null;
+        { rejection = "LOOP_IDENTIFIERS_NOT_DISTINCT"; return null; }
         bool hasExactLoop = t[i + 2].Value == "in" &&
             t[i + 3].Value == "this" && t[i + 4].Value == "." &&
             t[i + 6].Value == "{" && t[i + 7].Value == "if" &&
@@ -281,7 +295,7 @@ internal static class GenericMembershipPass
             t[i + 18].Value == ";" && t[i + 19].Value == "break" &&
             t[i + 20].Value == ";" && t[i + 21].Value == "}" &&
             t[i + 22].Value == "}";
-        if (!hasExactLoop) return null;
+        if (!hasExactLoop) { rejection = "LOOP_BODY_NOT_EXACT_MEMBERSHIP"; return null; }
 
         // Require the loop inside precisely the captured function body.
         int methodStart = -1;
@@ -301,7 +315,7 @@ internal static class GenericMembershipPass
             int close = Closing(t, open);
             if (open < i && close > i + 22) methodStart = open;
         }
-        if (methodStart < 0) return null;
+        if (methodStart < 0) { rejection = "METHOD_SCOPE_NOT_PROVEN"; return null; }
 
         // Field must be declared exactly once as array<CName> in the
         // enclosing source class. Scope-local bool must begin false and
@@ -316,12 +330,12 @@ internal static class GenericMembershipPass
             if (open < methodStart && Closing(t, open) > i)
                 classStart = open;
         }
-        if (classStart < 0) return null;
+        if (classStart < 0) { rejection = "CLASS_SCOPE_NOT_PROVEN"; return null; }
         int fields = 0;
         for (int j = classStart + 1; j + 7 < methodStart; j++)
             if (Sequence(t, j, "let", field, ":", "array", "<", "CName", ">", ";"))
                 fields++;
-        if (fields != 1) return null;
+        if (fields != 1) { rejection = "ARRAY_CNAME_FIELD_NOT_PROVEN"; return null; }
 
         int flagDeclaration = -1, valueDeclaration = -1;
         for (int j = methodStart + 1; j + 5 < i; j++)
@@ -329,18 +343,26 @@ internal static class GenericMembershipPass
             if (Sequence(t, j, "let", flag, ":", "Bool", "=", "false") &&
                 j + 6 < i && t[j + 6].Value == ";")
             {
-                if (flagDeclaration >= 0) return null;
+                if (flagDeclaration >= 0)
+                { rejection = "BOOL_DECLARATION_AMBIGUOUS"; return null; }
                 flagDeclaration = j + 6;
             }
             if (Sequence(t, j, "let", value, ":", "CName", "="))
             {
-                if (valueDeclaration >= 0) return null;
+                if (valueDeclaration >= 0)
+                { rejection = "CNAME_NEEDLE_DECLARATION_AMBIGUOUS"; return null; }
                 valueDeclaration = j + 4;
             }
         }
-        if (flagDeclaration < 0 || valueDeclaration < 0) return null;
+        if (flagDeclaration < 0 || valueDeclaration < 0)
+        {
+            rejection = flagDeclaration < 0 ?
+                "FALSE_BOOL_DECLARATION_MISSING" : "CNAME_NEEDLE_DECLARATION_MISSING";
+            return null;
+        }
         for (int j = flagDeclaration + 1; j < i; j++)
-            if (t[j].Value == flag) return null;
+            if (t[j].Value == flag)
+            { rejection = "BOOL_USED_BEFORE_LOOP"; return null; }
 
         // The loop body has to be source-only punctuation/identifiers,
         // not comments or string interpolations which might be lost.
@@ -349,10 +371,11 @@ internal static class GenericMembershipPass
         if (body.Contains("//", StringComparison.Ordinal) ||
             body.Contains("/*", StringComparison.Ordinal) ||
             body.Contains("<literal>", StringComparison.Ordinal))
-            return null;
+        { rejection = "LOOP_TEXT_CONTAINS_COMMENT_OR_LITERAL"; return null; }
         int newline = text.LastIndexOf('\n', Math.Max(0, start - 1)) + 1;
         string indent = text[newline..start];
-        if (!indent.All(c => c is ' ' or '\t')) return null;
+        if (!indent.All(c => c is ' ' or '\t'))
+        { rejection = "LOOP_INDENTATION_NOT_PROVEN"; return null; }
         string eol = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
         string replacement = Marker + eol + indent +
             flag + " = ArrayContains(this." + field + ", " + value + ");";
