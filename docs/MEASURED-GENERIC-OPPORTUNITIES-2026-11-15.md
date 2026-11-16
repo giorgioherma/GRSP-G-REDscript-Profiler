@@ -1,5 +1,8 @@
 # Fresh CET + GRSP + PresentMon — measured REDscript generic opportunities (2026-11-15)
 
+**2026-11-16 ownership update:** The optimizer/Resolver implementation checkpoints below now belong to [GCO `dev/redscript/resolver_handoff`](https://github.com/giorgioherma/Gs-Cyberpunk2077_Optimizations/tree/dev/redscript/resolver_handoff), not GRSP. GRSP retains responsibility for native measured data and instrumentation; this dated analysis remains evidence, not a GRSP optimizer development queue.
+
+
 **Authority and scope:** Owner-supplied five-minute WORLD capture reviewed locally, from GCO `COLLECT` evidence. This repository contains **derived observations only**: **do not commit the private GCO capture ZIP, real installed mod sources or the hand-optimized 61-file source archive**. This is R2 measurement analysis, NOT a generated pass or compilation/gameplay proof. Read `AGENTS.md` and `docs/RESOLVER_HANDOFF.md` before choosing implementation.
 
 ## Integrity and data interpretation
@@ -25,9 +28,9 @@
 - Frequent `PlayerPuppet.OnGameAttached` (60 wrappers / 39 owners in dated source snapshot) and `OnDetach` (26 / 16) offer common **registration and lifecycle structure**, not automatically repeated hot-path CPU. These are safety/invalidation anchors for A/D, not an excuse to merge all mod callbacks.
 - GRSP `RSP_WorkMap` classified measured callsite work as `FRAME_BOUND_POLLING` **12,815.070 ms**, `FRAME_BOUND_REPEAT_WORK` **11,946.300 ms**, `INNER_LOOP_EXPLOSION` **7,058.763 ms** and `HIGH_COST_CALL` **14,843.238 ms**. These are coarse evidence *labels*, not proven safe transformations or expected savings.
 
-## Next checkpoint before any generator code
+## Historical 2026-11-15 proposed checkpoint (superseded by GCO-local ownership)
 
-1. Build the **GRSP-owned versioned Resolver evidence reader** for all complete raw developer CSVs, aligned with the actual GCO PresentMon chronology. No dependence on visual HTML and no synthetic CapFrameX conversion.
+1. **Now owned by GCO:** implement and maintain the versioned REDscript Resolver evidence reader in the separate GCO-local component, consuming unchanged native GRSP developer CSVs and genuine GCO PresentMon chronology. The original reader was historically prototyped in this GRSP branch; it is migration input, not ongoing GRSP generator work.
 2. Validate the current live `r6/scripts` source against hot callsite source paths and lines; fingerprint exact structural neighborhoods. Explicitly skip missing/drifted source and separate registered vs executed methods and **call edges vs method invocations**.
 3. Prototype generic **A** only against structurally admitted source shapes, using the 61-file input-related references as **tests/behavioral oracle**, not a 61-rule semantic queue. Prove equivalent action delivery, consumption, input-device transitions, listener registration/cleanup and fallbacks; compile the composed source tree and re-run for idempotence.
 4. For **B**, measure *actual unchanged-value rate* and invalidation coverage before designing a source generator. For FE virtual proxy, first resolve attribution. Compare fresh before/after captures before claiming improvement.
