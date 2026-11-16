@@ -14,7 +14,7 @@
 
 1. `README.md`, `OUTPUT_SCHEMA.md`, `docs/LATEST-WORK.md`, `docs/PROFILER_SUMMARY_INTEROP_CONTRACT.md`, `docs/TOTAL_INTEGRATION_CONTRACT.md`.
 2. Native source and profiler manager/install/restore contracts, current dev branch HEAD, and current GCO capture interface.
-3. For optimizer/evidence questions only, use the **GCO** handoff/blueprint/progress linked above. The former `docs/RESOLVER_HANDOFF.md` is a historical development record, not permission to build a GRSP-owned managed Resolver.
+3. For optimizer/evidence questions only, use the **GCO** handoff/blueprint/progress linked above. The former `docs/RESOLVER_HANDOFF.md` and `docs/RESOLVER_PROGRESS.md` were migrated as exact archived records into GCO `docs/integration/reference/` and removed from this branch. All active managed Resolver development stays in GCO.
 
 ## Native instrumentation and safety
 
