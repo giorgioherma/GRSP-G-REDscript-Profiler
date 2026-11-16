@@ -10,9 +10,9 @@
 | --- | --- | --- |
 | R0 owner contract | Documentation setup | GRSP owns Resolver/Generator/compiler; GCO owns coordination/merge; verify both repo handoffs |
 | R1 private approved reference inventory | NOT STARTED | Index 61 paths/owners/provenance only; **no semantic implementation before generics** |
-| R2 fresh capture analysis | 15:51 CAPTURE + CURRENT SOURCE 2,319-FILE PROVEN; SCENARIO REPEATS PENDING | Verified one new complete 309.6 s WORLD three-profiler capture, analyzed full GRSP developer CSVs; live source identity, attribution, multiple scenarios still pending; see [audit](MEASURED-GENERIC-OPPORTUNITIES-2026-11-15.md) |
-| R3 REDscript Resolver JSON | REAL FULL .NET10 15:51 REPLAY GCO #446 SUCCESS | GRSP-owned versioned full raw CSV + PresentMon evidence JSON; real private replay not yet executed in .NET |
-| R4 source admission | 2,319 INDEXED; SOURCE-WIDE DISCOVERY PASS; SEMANTIC/RECEIVER PROOF PARTIAL | Source span/name + SHA diagnostics only; pass-specific pristine/partial/complete states still pending |
+| R2 fresh capture analysis | 15:51 CAPTURE + CURRENT SOURCE 2,319-FILE PROVEN; SCENARIO REPEATS PENDING | Verified one new complete 309.6 s WORLD three-profiler capture, analyzed full GRSP developer CSVs; Current source identity and native attribution confirmed in later GCO #446/#479; additional scenarios remain pending; see [audit](MEASURED-GENERIC-OPPORTUNITIES-2026-11-15.md) |
+| R3 REDscript Resolver JSON | REAL FULL .NET10 15:51 REPLAY GCO #446 SUCCESS | GRSP-owned versioned full raw CSV + PresentMon evidence JSON; actual sealed private .NET10 replay and genuine PresentMon alignment verified in GCO #446/#479 |
+| R4 source admission | 2,319 INDEXED; SOURCE-WIDE DISCOVERY PASS; SEMANTIC/RECEIVER PROOF PARTIAL | Source span/name + SHA diagnostics only; one strict membership rule pristine/partial/complete tested; generalized receiver and semantic proof remain pending |
 | R5 source-wide measured generic passes FIRST | 1 REAL SCC-VALIDATED PREVIEW, 48 DISCOVERED LOOP SHAPES (47 REJECTED) | Fresh data → rank generic opportunities across installed mods → compile/idempotent validated pass output |
 | R6 GRSP/G-REDruntime generic enablers | CONDITIONAL | Interleave with R2–R5 as needed to unlock generic value; verify native overhead/runtime contracts |
 | R7 generic-output gap matrix then semantic remainder | BLOCKED BY GENERIC COVERAGE | After validated generics classify all 61 per operation; implement only structural SEMANTIC_REMAINDER; zero is valid |
