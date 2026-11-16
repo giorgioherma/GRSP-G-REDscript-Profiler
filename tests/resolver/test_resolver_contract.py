@@ -422,6 +422,8 @@ class GrspResolverContracts(unittest.TestCase):
         self.assertEqual(1, scan['eligibleMeasured'])
         self.assertEqual(0, scan['eligibleUnmeasured'])
         self.assertEqual('ELIGIBLE_MEASURED', scan['candidates'][0]['state'])
+        self.assertEqual('ELIGIBLE', scan['candidates'][0]['reasonCode'])
+        self.assertEqual({}, scan['firstFailedPrerequisiteCounts'])
         self.assertEqual(300, scan['candidates'][0]['measuredLoopOperatorEdges'])
         self.assertFalse(scan['candidates'][0]['rewriteAuthorized'])
         self.assertFalse(scan['generationAuthorized'])
@@ -464,6 +466,44 @@ class GrspResolverContracts(unittest.TestCase):
         self.assertEqual(1, scan['rejectedUnproven'])
         self.assertEqual(0, scan['structuralMatches'])
         self.assertEqual('REJECTED_UNPROVEN', scan['candidates'][0]['state'])
+        self.assertEqual('LOOP_BODY_NOT_EXACT_MEMBERSHIP',
+                         scan['candidates'][0]['reasonCode'])
+        self.assertEqual({'LOOP_BODY_NOT_EXACT_MEMBERSHIP': 1},
+                         scan['firstFailedPrerequisiteCounts'])
+
+    def test_source_wide_scanner_reports_precise_failed_gate_no_bypass(self):
+        cases = [
+            ('array', 'public let names: array<CName>;',
+             'public let names: array<Int32>;',
+             'ARRAY_CNAME_FIELD_NOT_PROVEN'),
+            ('needle', 'let actionName: CName = n"alpha";',
+             'let actionName: String = "alpha";',
+             'CNAME_NEEDLE_DECLARATION_MISSING'),
+            ('flag', 'let matched: Bool = false;',
+             'let matched: Bool = true;',
+             'FALSE_BOOL_DECLARATION_MISSING'),
+            ('side_effect', 'matched = true;',
+             'DoSomething();\\n        matched = true;',
+             'LOOP_BODY_NOT_EXACT_MEMBERSHIP'),
+        ]
+        for name, old, new, expected in cases:
+            with self.subTest(name=name):
+                self.prepare_measured_membership(
+                    lambda source: source.replace(old, new))
+                original = self.source.read_bytes()
+                result, path = self.scan_generic(target=self.root / (
+                    'diagnosis-' + name + '.json'))
+                self.assertEqual(0, result.returncode, result.stderr)
+                scan = json.loads(path.read_text())
+                self.assertEqual(1, scan['candidateLoopsExamined'])
+                self.assertEqual(0, scan['structuralMatches'])
+                self.assertEqual(1, scan['rejectedUnproven'])
+                self.assertEqual(expected, scan['candidates'][0]['reasonCode'])
+                self.assertEqual({expected: 1},
+                                 scan['firstFailedPrerequisiteCounts'])
+                self.assertFalse(scan['generationAuthorized'])
+                self.assertEqual(0, scan['generatedFiles'])
+                self.assertEqual(original, self.source.read_bytes())
 
     def test_source_wide_scanner_refuses_stale_capture_and_unsafe_output(self):
         self.prepare_measured_membership()
