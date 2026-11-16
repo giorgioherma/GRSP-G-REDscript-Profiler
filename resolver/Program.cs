@@ -17,6 +17,8 @@ internal static class Program
                 return RunSourceAudit(ParseArguments(args.Skip(1).ToArray()));
             if (args.Length > 0 && args[0] == "preview-generic")
                 return RunGenericPreview(ParseArguments(args.Skip(1).ToArray()));
+            if (args.Length > 0 && args[0] == "scan-generic")
+                return RunGenericScan(ParseArguments(args.Skip(1).ToArray()));
             if (args.Length > 0 && args[0] == "scc-headless")
                 return HeadlessScc.Run(ParseArguments(args.Skip(1).ToArray()));
             if (args.Length == 0 || args[0] != "analyze")
@@ -293,6 +295,24 @@ internal static class Program
             Path.GetFullPath(Required(options, "--out")));
         Console.WriteLine("GRSP generic PREVIEW only: staged external source, " +
                           "not compiled, not a deployment ZIP.");
+        return 0;
+    }
+
+    // Read-only cross-mod discovery, separate from source preview generation.
+    private static int RunGenericScan(Dictionary<string, string> options)
+    {
+        if (options.Keys.Any(key => key is not ("--game" or "--analysis" or "--out")))
+            throw new ArgumentException(
+                "Scan only accepts --game, optional --analysis and --out");
+        var report = GenericOpportunityScanner.Scan(
+            Path.GetFullPath(Required(options, "--game")),
+            options.TryGetValue("--analysis", out string? analysis) ? analysis : null,
+            Path.GetFullPath(Required(options, "--out")));
+        // Print ONLY counts; third-party source paths remain in private local JSON.
+        Console.WriteLine("GRSP generic opportunity scan: files=" + report.Files +
+            " candidates=" + report.Candidates + " measured=" + report.Measured +
+            " unmeasured=" + report.Unmeasured + " rejected=" + report.Rejected +
+            " generated=0 deployable=false");
         return 0;
     }
 
