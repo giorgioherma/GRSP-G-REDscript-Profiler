@@ -45,6 +45,7 @@ internal static class GenericOpportunityScanner
         var rows = new List<object>();
         int examined = 0, eligible = 0, measured = 0, unmeasured = 0;
         int rejected = 0, ruleMarkedFiles = 0, invalidFiles = 0;
+        var rejectionCounts = new SortedDictionary<string, int>(StringComparer.Ordinal);
 
         foreach (string file in Directory.EnumerateFiles(
                      scripts, "*.reds", SearchOption.AllDirectories)
@@ -88,7 +89,8 @@ internal static class GenericOpportunityScanner
 
                 examined++;
                 int line = tokens[i].Line;
-                bool hasProof = GenericMembershipPass.HasSourceShape(text, tokens, line);
+                string reasonCode = GenericMembershipPass.SourceShapeReason(text, tokens, line);
+                bool hasProof = reasonCode == "ELIGIBLE";
                 string key = relative + "\0" + line.ToString(CultureInfo.InvariantCulture);
                 evidence.TryGetValue(key, out Evidence? edges);
                 bool hasMeasurements = hasProof && edges is not null &&
@@ -96,7 +98,12 @@ internal static class GenericOpportunityScanner
 
                 string state = !hasProof ? "REJECTED_UNPROVEN" :
                     hasMeasurements ? "ELIGIBLE_MEASURED" : "ELIGIBLE_UNMEASURED";
-                if (!hasProof) rejected++;
+                if (!hasProof)
+                {
+                    rejected++;
+                    rejectionCounts[reasonCode] =
+                        rejectionCounts.GetValueOrDefault(reasonCode) + 1;
+                }
                 else
                 {
                     eligible++;
@@ -106,7 +113,7 @@ internal static class GenericOpportunityScanner
                 {
                     path = "r6/scripts/" + relative,
                     owner = relative.Contains('/') ? relative.Split('/')[0] : "ROOT_LEVEL",
-                    line, rule = Rule, state,
+                    line, rule = Rule, state, reasonCode,
                     structuralProof = hasProof ? "STRICT_SOURCE_SHAPE_MATCH" :
                         "NOT_PROVEN_DO_NOT_REWRITE",
                     measuredLoopOperatorEdges = hasMeasurements ? edges!.Edges : 0,
@@ -139,6 +146,7 @@ internal static class GenericOpportunityScanner
             eligibleMeasured = measured,
             eligibleUnmeasured = unmeasured,
             rejectedUnproven = rejected,
+            firstFailedPrerequisiteCounts = rejectionCounts,
             filesWithExistingRuleMarkerUnverified = ruleMarkedFiles,
             unparseableFilesSkipped = invalidFiles,
             compilerValidated = false,
