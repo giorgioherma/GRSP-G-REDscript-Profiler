@@ -178,3 +178,18 @@ The dev-native `Data/Developer/RSP_ProxyAttribution.csv` is built **after the ex
 **Limits:** `DIRECT_VM_HOOK_NESTING` proves only that an already-instrumented VM invocation is nested immediately inside the proxy callsite in that thread. It does **not** identify the runtime receiver, prove execution of a unique concrete virtual method, count callback entries, establish causal attribution of an unresolved target, or measure costs in an uninstrumented native engine path. Native output explicitly sets `receiver_proven=false` and `callee_execution_proven=false`. Nested inclusive timings may overlap and must not be added to parent time. The cap/drop field means that capture completeness for distinct relationships can be unknown even with intact original profiling data.
 
 Source owner: GRSP Rust profiler, not managed Resolver. GCO `dev/redscript/resolver_handoff` imports only the verified GRSP owner-CI native DLL + exact source SHA/Cargo.lock/SHA256 provenance, and interprets the evidence. GCO must never compile or patch this Rust source in its own build. No receiver-aware code rewrites, gameplay acceptance or FPS benefit follows without further proof.
+
+## Native hook safety revision — 2026-11-16
+
+Following the new-instrumentation gameplay crash report, the canonical native-only development branch is `dev/native-instrumentation` (not the obsolete Resolver-named GRSP branch).
+
+The existing `InvokeStatic` and `InvokeVirtual` hooks are retained, with unchanged original callback ordering. Bookkeeping now has a thread-local re-entrancy guard. A nested call **inside profiler bookkeeping** skips just its own measurement while the original engine callback runs normally; legitimate VM nesting during the original callback is still instrumented.
+
+The new proxy-child hash map reserves its 4,096-key capacity at thread-shard initialization and retains that allocation across captures. Virtual proxy names are capped at 1,024 per thread. These changes prevent **additional** allocator growth from the new proxy-child counters within the recurring measured opcode path. Original GRSP callsite/frame maps retain their existing behavior and allocations.
+
+F11 STOP now waits for **both** active profiled roots and in-flight profiler bookkeeping before reading thread-local `UnsafeCell` shards. Sequentially consistent entry/STOP ordering closes the pre-root initialization race. If any entry remains active, the merge is refused; an incomplete capture is **not** dumped or sealed as an F11-complete session.
+
+`Data/Developer/RSP_ProxyChildren.csv` now includes `unregistered_proxy_targets_global`, the count of proxy target registrations skipped after the per-thread bound. A nonzero value means runtime child attribution is incomplete; it must not be treated as zero work or converted into a rewrite rule.
+
+**Acceptance remains pending:** Rust compilation, Windows owner-CI, in-game stability/restore, bounded recording overhead, and actual F11 CSV evidence. Source-level changes do not prove the reported access violation has been resolved.
+
