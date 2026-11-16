@@ -1,5 +1,24 @@
 # GRSP 1.0.0 Output Schema
 
+## 2026-11-16 — post-F11 cross-callback read/reuse pressure (experimental)
+
+`Data/Developer/RSP_CallbackReuse.csv` is produced by GRSP's **existing** `callback_pressure::export` after successful F11 STOP and shard merge. It does **not** add a VM hook, callback wrapper, per-invocation counter, native pointer dereference, source instrumentation or REDscript rewrite. The input is the existing callsite `AggStat.frame_calls` (per-frame counts), `FUNCTIONS`, `CALLSITES`, `TARGET_NAMES` and captured exclusive timer ticks.
+
+**Rows are identified by the captured invocation-target kind and native identity**, and ranked by outgoing read-like edge count. Candidates come from generic source method names that begin with `Get`, `Is`, `Has`, `Find` or `Query` and have named (not unresolved) targets; source-caller methods must be callback-like by the same classification already used for `RSP_CallbackPressure.csv`. This is a **heuristic source-name filter**, not a claim of actual getter purity, stable results, receiver identity or a real callback entry. The included categories are `EVENT_ARGUMENT_READ`, `SHARED_SYSTEM_OR_CONTEXT_READ`, `PLAYER_LIFETIME_SENSITIVE_READ` and `READ_LIKE_PURITY_UNKNOWN`. Event-argument readers are **not** global shared-state values.
+
+CSV columns: `capture_id,read_target_id,call_kind,target,target_resolution,read_candidate_class,callback_source_functions,source_owners,source_callsites,outgoing_edges,edges_per_sec,exclusive_instrumented_ms,observed_active_frames,same_frame_extra_edges,multi_callback_source_frames,multi_owner_frames,max_edges_per_frame,frame_evidence_status,dropped_frame_rows,callback_entries_proven,cache_safe_proven`.
+
+- `same_frame_extra_edges` is the count beyond one read edge to the same native target in an observed frame. Different arguments, receivers and state may justify every call. **It is not a count of eliminable operations.**
+- `multi_callback_source_frames` and `multi_owner_frames` identify frame overlaps across source callers and owners. They do not establish identical arguments, equal results or permissible shared caching.
+- `exclusive_instrumented_ms` is the existing summed outgoing-call exclusive time, not measured potential savings, callback-body CPU or engine CPU.
+- The after-STOP analysis caps selected target groups at **128**, discovered call counts at **≥300**, and tracked per-target/frame identities across groups at **200,000**; `TRUNCATED_NOT_ZERO_WORK` plus `dropped_frame_rows` is mandatory when that cap is exceeded. No fabricated zero or complete-sample inference.
+- Both `callback_entries_proven` and `cache_safe_proven` are always `false`. Source drift, side effects, argument/receiver identity, lifetime, invalidation, callback ordering and REDscript compilation must be independently proven before a GCO generic pass.
+
+For future optimization, compare the measured targets against G-REDruntime's **existing** `StateCache` (weak-reference handles, invalidation on detach/player lifecycle) and `ContextService` (time-bounded state) rather than creating another competing cache or adding mod-specific catalogs. No generated overlay or new runtime behavior is authorized by this CSV alone. The downstream managed consumer is GCO's `CallbackReuseEvidence`, not GRSP.
+
+**Validation status at authoring:** source-contracts and Rust unit/compile checks passed on GRSP CI #23; owner DLL packaging, full GCO integration artifact and real in-game evidence from this new writer still require separate verification.
+
+
 ## Collected archive layout
 
 Standalone collection normalizes the verified native capture into this stable handoff:
