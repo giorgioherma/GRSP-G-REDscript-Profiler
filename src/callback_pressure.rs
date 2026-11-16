@@ -242,6 +242,22 @@ fn read_class(name: &str) -> &'static str {
     } else { "READ_LIKE_PURITY_UNKNOWN" }
 }
 
+// Per-target bounded stream; omitted rows are reported, not treated as zero.
+fn accumulate_read_frame(
+    frames: &mut HashMap<u64, ReadFrame>, dropped: &mut u64,
+    frame: u64, caller: usize, owner: u64, calls: u64, cap: usize
+) {
+    if let Some(row) = frames.get_mut(&frame) {
+        row.add(caller, owner, calls);
+    } else if frames.len() < cap {
+        let mut row = ReadFrame::default();
+        row.add(caller, owner, calls);
+        frames.insert(frame, row);
+    } else {
+        *dropped = dropped.saturating_add(1);
+    }
+}
+
 fn export_shared_reads(
     output: &Path,
     funcs: &HashMap<usize, FunctionMeta>,
@@ -291,15 +307,9 @@ fn export_shared_reads(
             let Some(meta) = funcs.get(&site.caller) else { continue };
             if !meta.is_mod_source || family(&meta.function).is_none() { continue }
             for &(frame, calls) in &stat.frame_calls {
-                if let Some(r) = frames.get_mut(&frame) {
-                    r.add(site.caller, meta.owner_hash, calls);
-                } else if frames.len() < MAX_FRAME_KEYS_PER_TARGET {
-                    let mut r = ReadFrame::default();
-                    r.add(site.caller, meta.owner_hash, calls);
-                    frames.insert(frame, r);
-                } else {
-                    dropped_frames = dropped_frames.saturating_add(1);
-                }
+                accumulate_read_frame(&mut frames, &mut dropped_frames,
+                    frame, site.caller, meta.owner_hash, calls,
+                    MAX_FRAME_KEYS_PER_TARGET);
             }
         }
         let extra = frames.values().map(|r| r.calls.saturating_sub(1))
@@ -341,6 +351,27 @@ mod callback_reuse_tests {
             "EVENT_ARGUMENT_READ");
         assert_eq!(read_class("ScriptGameInstance::GetTimeSystem"),
             "SHARED_SYSTEM_OR_CONTEXT_READ");
+    }
+
+    #[test]
+    fn frame_budget_is_independent_per_target_and_repeat_calls_are_preserved() {
+        let mut first = HashMap::new();
+        let mut dropped_first = 0u64;
+        accumulate_read_frame(&mut first, &mut dropped_first, 0, 11, 21, 2, 2);
+        accumulate_read_frame(&mut first, &mut dropped_first, 1, 11, 21, 1, 2);
+        accumulate_read_frame(&mut first, &mut dropped_first, 0, 12, 22, 3, 2);
+        accumulate_read_frame(&mut first, &mut dropped_first, 2, 12, 22, 4, 2);
+        assert_eq!(first.len(), 2);
+        assert_eq!(dropped_first, 1);
+        assert_eq!(first[&0].calls, 5);
+        assert!(first[&0].multiple_callers);
+        assert!(first[&0].multiple_owners);
+        let mut next = HashMap::new();
+        let mut dropped_next = 0u64;
+        accumulate_read_frame(&mut next, &mut dropped_next, 2, 13, 23, 8, 2);
+        assert_eq!(next.len(), 1);
+        assert_eq!(next[&2].calls, 8);
+        assert_eq!(dropped_next, 0);
     }
 
     #[test]
