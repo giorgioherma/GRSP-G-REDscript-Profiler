@@ -6,15 +6,15 @@
 
 ## Archived progress below (pre-ownership move)
 
-**Branch:** `dev/resolver-profiler-handoff`. **Owner:** GRSP. **Current baseline:** `ece5b8e2c65690bb914cc1f90b3c1bd79d740ef8` before this documentation change; stable `main` and 1.0.0 release protected.
+**Branch:** `dev/resolver-profiler-handoff`. **Historical managed development, no longer active owner:** GCO `dev/redscript/resolver_handoff` now owns the Resolver/Generator. **Current baseline:** `ece5b8e2c65690bb914cc1f90b3c1bd79d740ef8` before this documentation change; stable `main` and 1.0.0 release protected.
 **Canonical blueprint:** https://github.com/giorgioherma/Gs-Cyberpunk2077_Optimizations/blob/feature/redscript-resolver-integration/docs/integration/GRSP_REDscript_Resolver_Blueprint.md
-**GCO integration branch:** `feature/redscript-resolver-integration`, forked from completed CET/PresentMon baseline `3caccafbdf39ec2b6474b69ed8f34c9392e2ff20`.
+**Current GCO managed Resolver branch:** `dev/redscript/resolver_handoff` (formerly `feature/redscript-resolver-integration`); all older GRSP-owned directives below are historical.
 
 ## Current stage
 
 | Stage | Status | Evidence/next gate |
 | --- | --- | --- |
-| R0 owner contract | Documentation setup | GRSP owns Resolver/Generator/compiler; GCO owns coordination/merge; verify both repo handoffs |
+| R0 owner contract | SUPERSEDED BY 2026-11-16 OWNER DECISION | GCO now owns managed Resolver/Generator/SCC; GRSP owns native profiling/evidence; older stages here are archived |
 | R1 private approved reference inventory | NOT STARTED | Index 61 paths/owners/provenance only; **no semantic implementation before generics** |
 | R2 fresh capture analysis | 15:51 CAPTURE + CURRENT SOURCE 2,319-FILE PROVEN; SCENARIO REPEATS PENDING | Verified one new complete 309.6 s WORLD three-profiler capture, analyzed full GRSP developer CSVs; Current source identity and native attribution confirmed in later GCO #446/#479; additional scenarios remain pending; see [audit](MEASURED-GENERIC-OPPORTUNITIES-2026-11-15.md) |
 | R3 REDscript Resolver JSON | REAL FULL .NET10 15:51 REPLAY GCO #446 SUCCESS | GRSP-owned versioned full raw CSV + PresentMon evidence JSON; actual sealed private .NET10 replay and genuine PresentMon alignment verified in GCO #446/#479 |
