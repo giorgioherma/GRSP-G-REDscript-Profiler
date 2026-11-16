@@ -132,6 +132,8 @@ pub(super) fn export_runtime_children(developer_dir: &Path) -> std::io::Result<(
     let targets = TARGET_NAMES.read();
     let edges = PROXY_CHILDREN.read();
     let dropped = PROXY_CHILDREN_DROPPED.load(Ordering::Relaxed);
+    let unregistered_targets =
+        PROXY_TARGET_REGISTRATIONS_DROPPED.load(Ordering::Relaxed);
     let capture = CAPTURE_ID.load(Ordering::Relaxed);
 
     let mut rows: Vec<_> = edges.iter().collect();
@@ -141,7 +143,7 @@ pub(super) fn export_runtime_children(developer_dir: &Path) -> std::io::Result<(
 
     let mut out = BufWriter::new(File::create(
         developer_dir.join("RSP_ProxyChildren.csv"))?);
-    writeln!(out, "capture_id,proxy_stable_callsite_id,proxy_source_owner,proxy_source_function,proxy_source_path,proxy_source_line,proxy_target,proxy_resolution,child_stable_callsite_id,child_source_owner,child_source_function,child_source_path,child_source_line,child_target,child_resolution,observed_direct_child_edges,observed_child_inclusive_ms,observed_child_exclusive_ms,dropped_new_proxy_child_keys_global,relationship,receiver_proven,callee_execution_proven")?;
+    writeln!(out, "capture_id,proxy_stable_callsite_id,proxy_source_owner,proxy_source_function,proxy_source_path,proxy_source_line,proxy_target,proxy_resolution,child_stable_callsite_id,child_source_owner,child_source_function,child_source_path,child_source_line,child_target,child_resolution,observed_direct_child_edges,observed_child_inclusive_ms,observed_child_exclusive_ms,dropped_new_proxy_child_keys_global,unregistered_proxy_targets_global,relationship,receiver_proven,callee_execution_proven")?;
 
     for (key, stat) in rows {
         let Some(proxy_meta) = funcs.get(&key.proxy.caller) else { continue; };
@@ -150,7 +152,7 @@ pub(super) fn export_runtime_children(developer_dir: &Path) -> std::io::Result<(
         let child_target = target_info(key.child, &funcs, &targets);
         // Avoid claims about total VM work; nested inclusive work overlaps.
         writeln!(out,
-            "{},RSPC-{:016X},{},{},{},{},{},{},RSPC-{:016X},{},{},{},{},{},{},{},{:.6},{:.6},{},DIRECT_VM_HOOK_NESTING,false,false",
+            "{},RSPC-{:016X},{},{},{},{},{},{},RSPC-{:016X},{},{},{},{},{},{},{},{:.6},{:.6},{},{},DIRECT_VM_HOOK_NESTING,false,false",
             capture,
             stable_callsite_hash(proxy_meta, key.proxy, &proxy_target),
             csv(&proxy_meta.owner), csv(&proxy_meta.function),
@@ -161,7 +163,7 @@ pub(super) fn export_runtime_children(developer_dir: &Path) -> std::io::Result<(
             csv(&child_meta.source_path), key.child.line,
             csv(&child_target.display), child_target.resolution,
             stat.calls, ticks_to_ms(stat.inclusive_ticks),
-            ticks_to_ms(stat.exclusive_ticks), dropped)?;
+            ticks_to_ms(stat.exclusive_ticks), dropped, unregistered_targets)?;
     }
     out.flush()
 }
