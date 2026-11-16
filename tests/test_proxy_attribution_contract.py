@@ -87,6 +87,13 @@ class ProxyAttributionContract(unittest.TestCase):
                 body)
         self.assertIn("bookkeeping_guard_refuses_reentrant_entry_and_resets", self.native)
         self.assertIn("bounded_proxy_counters_have_capacity_before_records", self.native)
+        self.assertIn("PROFILE_BOOKKEEPING_ACTIVE.fetch_add(1, Ordering::SeqCst)", self.native)
+        self.assertIn("PROFILE_BOOKKEEPING_ACTIVE.fetch_sub(1, Ordering::SeqCst)", self.native)
+        self.assertIn("PROFILE_STATE.store(STATE_STOPPING, Ordering::SeqCst)", self.native)
+        self.assertIn("if !capture_quiescent()", self.native)
+        self.assertIn("while waited < drain_wait_ms && !capture_quiescent()", self.native)
+        self.assertIn("let dump_ok = merge_ok && dump_results().is_ok()", self.native)
+        self.assertIn("if dump_ok && play_stop_signal", self.native)
 
     def test_native_ci_builds_and_validates_exact_owned_output(self):
         self.assertIn("'src/proxy_attribution.rs'", self.workflow)
