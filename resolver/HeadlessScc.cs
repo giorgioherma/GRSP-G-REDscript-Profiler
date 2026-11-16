@@ -40,7 +40,7 @@ internal static class HeadlessScc
 
         if (options.Keys.Any(x => x is not ("--workspace" or "--r6" or
                 "--cache" or "--compiled" or "--scc-native" or
-                "--out" or "--log")))
+                "--out" or "--log" or "--external-scripts")))
             throw new ArgumentException("Unsupported headless SCC option");
 
         string workspace = Value("--workspace");
@@ -50,6 +50,8 @@ internal static class HeadlessScc
         string library = Value("--scc-native");
         string report = Value("--out");
         string log = Value("--log");
+        string? externalScripts = options.ContainsKey("--external-scripts")
+            ? Value("--external-scripts") : null;
 
         // No headless SCC entrypoint may write into a normal game tree.
         // The owner runner explicitly creates this dedicated isolated copy.
@@ -67,7 +69,13 @@ internal static class HeadlessScc
                 StringComparison.OrdinalIgnoreCase) ||
             log.StartsWith(workspace + Path.DirectorySeparatorChar,
                 StringComparison.OrdinalIgnoreCase) ||
-            File.Exists(output) || File.Exists(report) || File.Exists(log))
+            File.Exists(output) || File.Exists(report) || File.Exists(log) ||
+            (externalScripts is not null &&
+             (!externalScripts.Equals(Path.Combine(workspace, "red4ext", "plugins",
+                   "Codeware", "Scripts"), StringComparison.OrdinalIgnoreCase) ||
+              !Directory.Exists(externalScripts) ||
+              !Directory.EnumerateFiles(externalScripts, "*.reds",
+                   SearchOption.AllDirectories).Any())))
             throw new InvalidDataException(
                 "Headless SCC requires an untouched, explicitly isolated source/cache workspace");
 
@@ -88,6 +96,7 @@ internal static class HeadlessScc
             var setCache = Resolve<SetPath>("scc_settings_set_custom_cache_file");
             var setOutput = Resolve<SetPath>("scc_settings_set_output_cache_file");
             var disablePopup = Resolve<DisablePopup>("scc_settings_disable_error_popup");
+            var addScriptPath = Resolve<SetPath>("scc_settings_add_script_path");
             var compile = Resolve<Compile>("scc_compile");
             var getSuccess = Resolve<GetSuccess>("scc_get_success");
             var copyError = Resolve<CopyError>("scc_copy_error");
@@ -96,6 +105,8 @@ internal static class HeadlessScc
             IntPtr r6Arg = Marshal.StringToCoTaskMemUTF8(r6);
             IntPtr cacheArg = Marshal.StringToCoTaskMemUTF8(cache);
             IntPtr outputArg = Marshal.StringToCoTaskMemUTF8(output);
+            IntPtr externalArg = externalScripts is null ? IntPtr.Zero :
+                Marshal.StringToCoTaskMemUTF8(externalScripts);
             IntPtr result = IntPtr.Zero;
             try
             {
@@ -104,6 +115,7 @@ internal static class HeadlessScc
                     throw new InvalidDataException("SCC native settings allocation failed");
                 setCache(settings, cacheArg);
                 setOutput(settings, outputArg);
+                if (externalArg != IntPtr.Zero) addScriptPath(settings, externalArg);
                 // This is the critical difference from scc.exe: the upstream
                 // CLI hardcodes show_error_popup=true and blocks headless CI.
                 disablePopup(settings);
@@ -132,6 +144,7 @@ internal static class HeadlessScc
                 Marshal.FreeCoTaskMem(r6Arg);
                 Marshal.FreeCoTaskMem(cacheArg);
                 Marshal.FreeCoTaskMem(outputArg);
+                if (externalArg != IntPtr.Zero) Marshal.FreeCoTaskMem(externalArg);
             }
         }
         finally { if (lib != IntPtr.Zero) NativeLibrary.Free(lib); }
@@ -162,6 +175,7 @@ internal static class HeadlessScc
             success,
             guiErrorPopupDisabled = true,
             originalCacheUnchanged = true,
+            externalScriptPaths = externalScripts is null ? 0 : 1,
             generatedOutputPresent = File.Exists(output),
             generatedOutputBytes = File.Exists(output) ? new FileInfo(output).Length : 0,
             errorCodeCounts = codeCounts,
@@ -178,7 +192,8 @@ internal static class HeadlessScc
             (success ? "COMPILED" : "COMPILER_ERRORS") +
             " elapsedSeconds=" + status.elapsedSeconds +
             " errorCodes=" + string.Join(",", codeCounts.Select(x => x.Key + ":" + x.Value)) +
-            " originalCacheUnchanged=true popupDisabled=true");
+            " originalCacheUnchanged=true popupDisabled=true" +
+            " externalScriptPaths=" + status.externalScriptPaths);
         return success ? 0 : 3;
     }
 }
