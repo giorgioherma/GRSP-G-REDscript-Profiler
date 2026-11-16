@@ -75,7 +75,7 @@ internal static class HeadlessScc
                    StringComparison.OrdinalIgnoreCase) ||
               !Directory.Exists(externalScripts) ||
               !Directory.EnumerateDirectories(externalScripts)
-                  .Any(plugin => Directory.Exists(Path.Combine(plugin, "Scripts")))))))
+                  .Any(plugin => Directory.Exists(Path.Combine(plugin, "Scripts"))))))
             throw new InvalidDataException(
                 "Headless SCC requires an untouched, explicitly isolated source/cache workspace");
 
