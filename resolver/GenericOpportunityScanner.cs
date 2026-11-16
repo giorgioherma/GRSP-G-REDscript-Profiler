@@ -58,6 +58,11 @@ internal static class GenericOpportunityScanner
             if (text.Contains("// GRSP-GENERIC:" + Rule, StringComparison.Ordinal))
                 ruleMarkedFiles++;
 
+            if (!source.IsFileIndexed(file))
+            {
+                invalidFiles++;
+                continue;
+            }
             IReadOnlyList<SourceAdmission.Token> tokens;
             try { tokens = SourceAdmission.ReadTokens(text); }
             catch (InvalidDataException)
@@ -85,9 +90,9 @@ internal static class GenericOpportunityScanner
                 int line = tokens[i].Line;
                 bool hasProof = GenericMembershipPass.HasSourceShape(text, tokens, line);
                 string key = relative + "\0" + line.ToString(CultureInfo.InvariantCulture);
-                bool hasMeasurements = hasProof &&
-                    evidence.TryGetValue(key, out Evidence? edges) &&
-                    edges!.Less > 0 && edges.Add > 0;
+                evidence.TryGetValue(key, out Evidence? edges);
+                bool hasMeasurements = hasProof && edges is not null &&
+                    edges.Less > 0 && edges.Add > 0;
 
                 string state = !hasProof ? "REJECTED_UNPROVEN" :
                     hasMeasurements ? "ELIGIBLE_MEASURED" : "ELIGIBLE_UNMEASURED";
