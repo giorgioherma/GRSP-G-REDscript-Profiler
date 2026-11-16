@@ -2,7 +2,7 @@
 
 ## STOP / repository routing — mandatory before any work
 
-**This repository is NOT the REDscript Resolver repository.** Its development branch name `dev/resolver-profiler-handoff` is a historical label, **not authorization** to develop the Resolver here.
+**This repository is NOT the REDscript Resolver repository.** The former `dev/resolver-profiler-handoff` branch is obsolete. The **current native-only development branch is `dev/native-instrumentation`**. The old branch name never authorizes managed Resolver work here.
 
 If a request involves **REDscript Resolver, R0–R10, R4/R5, generic optimization passes, scanner, generated .reds files, source admission, SCC compiler proof, idempotence, one combined ZIP, or cross-profiler interpretation**:
 1. **Stop all managed Resolver changes in GRSP.** Open `giorgioherma/Gs-Cyberpunk2077_Optimizations` on **`dev/redscript/resolver_handoff`**.
@@ -12,7 +12,7 @@ If a request involves **REDscript Resolver, R0–R10, R4/R5, generic optimizatio
 
 **Mandatory routing check:** before editing a file, ask whether the change creates/updates optimization analysis, planning, generation, source proof or compilation. If yes, the destination is **GCO**, even when a measured hotspot originated in a GRSP capture. No new managed Resolver directories, tests, CI or documents may be created here.
 
-**Authoritative GRSP development branch:** `dev/resolver-profiler-handoff`. Protect GRSP `main` and standalone v1.0.0. **Latest user-approved scope correction: 2026-11-16.**
+**Authoritative GRSP native instrumentation development branch:** `dev/native-instrumentation`. Do not continue development on `dev/resolver-profiler-handoff`. Protect GRSP `main` and standalone v1.0.0. **Latest user-approved scope correction: 2026-11-16.**
 
 ## Current ownership (supersedes 2026-11-15 managed Resolver decisions)
 
@@ -32,7 +32,7 @@ If a request involves **REDscript Resolver, R0–R10, R4/R5, generic optimizatio
 
 - GRSP raw evidence is measurement, not an installed mod inventory or an optimization authorization. Preserve stable IDs, F11 completeness, source attribution, frame boundaries and original captured evidence.
 - For a measured generic opportunity, extend the **existing native GRSP writer** only when its missing evidence is specifically justified and bounded. Demonstrate overhead and capture/restore safety. Do not add LuaJIT allocation/GC hooks or invent performance improvements.
-- Maintain the independent `.github/workflows/native-instrumentation.yml` source/native build path for profiler changes. Do not rebuild GRSP's native DLL in GCO or silently republish the stable standalone release. The GRSP managed Resolver CI has been **removed** after the successful GCO-local source/contract/real-stack migration.
+- Maintain the independent `.github/workflows/native-instrumentation.yml` source/native build path on `dev/native-instrumentation` for profiler changes. **Crash safety:** never add unmanaged pointer dereferences, additional VM hooks or allocations/re-entrant mutable state inside the measured opcode path without strict proof and regression tests. Do not rebuild GRSP's native DLL in GCO or silently republish the stable standalone release. The GRSP managed Resolver CI has been **removed** after the successful GCO-local source/contract/real-stack migration.
 - Preserve standalone GRSP optional CapFrameX compatibility; GCO consumes real PresentMon and must not fake CapFrameX data or add CET/GRSP CPU as a total.
 
 ## Progress and verification
