@@ -1,5 +1,12 @@
 # GRSP latest verified work
 
+## 2026-11-16 — callback reuse native instrumentation CI #23 SUCCESS
+
+- GRSP independent [native CI #23](https://github.com/giorgioherma/GRSP-G-REDscript-Profiler/actions/runs/43861198409), exact run `43861198409`, source `03542a8ebea04803d84afc20534b01f7246c0b0f`, **both jobs SUCCESS** (source Python contracts, actual Rust tests/cargo check and release `gco_explicit_f11` DLL build, PE writer markers, checksum and provenance). Artifact `GRSP-native-callback-instrumentation-03542a8ebea04803d84afc20534b01f7246c0b0f` (330,136 bytes), verified nonexpired with source/run identity.
+- GCO canonical [CI #514 attempt 2](https://github.com/giorgioherma/Gs-Cyberpunk2077_Optimizations/actions/runs/43862048161) **SUCCESS** after native producer #23 became available; imported exact source-owner DLL with new `RSP_CallbackReuse.csv` marker and packaged one existing GCO application. GCO artifact `Gs-Cyberpunk2077_Optimizer-v1.2.5-run514-a2` exists, nonexpired (90,069,117 bytes).
+- **Open gameplay gate:** no in-game capture yet using this new post-F11 writer; prior profiler safe-session observation applies to preceding native DLL. Validate full F11 stop, collected new CSV values, cost and gameplay stability before evaluating any generic cache pass.
+
+
 ## 2026-11-16 — CET-inspired cross-callback shared-read instrumentation (zero added hooks)
 
 - Using the CET registration-scoped callback/allocator evidence model and generic shared-provider concept as a comparison, the REDscript profiler now exports **post-F11** `RSP_CallbackReuse.csv`. It derives target/frame overlap from previously recorded `AggStat.frame_calls` and callback-like source functions, not from another VM interception point. Source commit `7957284cf7483c932678e16f0c0cbd088d8697ae` plus Rust tests `0f4b1686c4dc2c0b11d1ff5fa4d0d19f94386d4e`; source contracts updated `03542a8ebea04803d84afc20534b01f7246c0b0f` and native workflow PE-marker gate updated `d1ca6279254981b64dd61ac4836569bc9be04ac5`.
