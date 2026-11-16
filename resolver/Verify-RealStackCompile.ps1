@@ -239,19 +239,20 @@ try {
   }
   $effectiveSha=(Get-FileHash -Algorithm SHA256 -LiteralPath $effectiveFile.FullName).Hash
   Write-Host ('R6 effective-cache candidate admitted for independent compilation experiment: bytes='+$effectiveFile.Length+' differsFromVanilla='+($effectiveSha -ne $baseSha)+' originalVanillaSmokePassed=true')
-  # Discover actual user-provided RED4ext plugin providers; never hardcode mod lists.
-  $scriptDirs=@(Get-ChildItem -LiteralPath $pluginsRoot -Directory -Recurse |
-    Where-Object { $_.Name -eq 'Scripts' -and $_.Parent.Name -ne 'Scripts' -and
-      @(Get-ChildItem -LiteralPath $_.FullName -File -Filter '*.reds' -Recurse).Count -gt 0 })
-  if ($scriptDirs.Count -eq 0) { throw 'R6_PLUGIN_SCRIPT_ARCHIVE_INVALID: no provider Scripts trees' }
+  # RED4ext plugins may expose Scripts/*.reds OR packed.reds/module.reds
+  # immediately under their own plugin folder. Discover both from the real
+  # private archive, not a hard-coded provider list.
+  $cwAnchor=@(Get-ChildItem -LiteralPath $pluginsRoot -Directory -Recurse |
+    Where-Object { $_.Name -eq 'Codeware' -and
+      (Test-Path -LiteralPath (Join-Path $_.FullName 'Scripts') -PathType Container) })
+  if ($cwAnchor.Count -ne 1) { throw 'R6_PLUGIN_ARCHIVE_ROOT_UNPROVEN' }
+  $pluginInventory=$cwAnchor[0].Parent.FullName
   $providers=@{}
-  foreach($dir in $scriptDirs) {
-    $owner=$dir.Parent.Name
-    if ($providers.ContainsKey($owner)) { throw 'R6_DUPLICATE_SCRIPT_PROVIDER_REFUSED' }
+  foreach($dir in @(Get-ChildItem -LiteralPath $pluginInventory -Directory)) {
+    $owner=$dir.Name
     if ($owner -notmatch '^[A-Za-z0-9_. -]{1,100}$') { throw 'R6_INVALID_SCRIPT_PROVIDER_NAME' }
-    # Plugin archives may also contain README/config/assets; they are not
-    # compiler declarations. Only stage verified source .reds files.
     $files=@(Get-ChildItem -LiteralPath $dir.FullName -File -Recurse -Filter '*.reds')
+    if ($files.Count -eq 0) { continue }
     if (@($files | Where-Object {
         $_.Attributes -band [System.IO.FileAttributes]::ReparsePoint }).Count -gt 0) {
       throw 'R6_UNSAFE_PLUGIN_SCRIPT_ENTRY'
@@ -281,7 +282,7 @@ try {
     }
     $pluginStage=Join-Path $root 'red4ext/plugins'
     foreach($owner in @($providers.Keys | Sort-Object)) {
-      $dest=Join-Path (Join-Path $pluginStage $owner) 'Scripts'
+      $dest=Join-Path $pluginStage $owner
       if (Test-Path -LiteralPath $dest) { throw 'R6_PLUGIN_STAGE_PATH_COLLISION' }
       New-Item -ItemType Directory -Force -Path $dest | Out-Null
       foreach($file in $providers[$owner]) {
