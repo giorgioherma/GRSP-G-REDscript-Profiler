@@ -47,8 +47,15 @@ function Invoke-HeadlessScc {
   }
   $expectedExternalPaths=0
   if (Test-Path -LiteralPath $externalScripts -PathType Container) {
-    $expectedExternalPaths=@(Get-ChildItem -LiteralPath $externalScripts -Directory |
-      Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'Scripts') -PathType Container }).Count
+    foreach($plugin in @(Get-ChildItem -LiteralPath $externalScripts -Directory)) {
+      $scriptDir=Join-Path $plugin.FullName 'Scripts'
+      $scriptPrefix=$scriptDir+[System.IO.Path]::DirectorySeparatorChar
+      $allReds=@(Get-ChildItem -LiteralPath $plugin.FullName -File -Recurse -Filter '*.reds')
+      $underScripts=@($allReds | Where-Object {
+        $_.FullName.StartsWith($scriptPrefix,[System.StringComparison]::OrdinalIgnoreCase) })
+      if ($underScripts.Count -gt 0) { $expectedExternalPaths++ }
+      $expectedExternalPaths+=($allReds.Count-$underScripts.Count)
+    }
   }
   $info=[System.Diagnostics.ProcessStartInfo]::new('dotnet')
   $info.WorkingDirectory=Split-Path $dll -Parent
