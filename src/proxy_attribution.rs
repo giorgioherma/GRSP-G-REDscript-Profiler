@@ -103,6 +103,27 @@ mod tests {
     }
 }
 
+
+/// Bounded per-thread aggregation invoked by existing VM-hook exit only.
+/// Retain observed keys under pressure; count discarded *new* relationships.
+pub(super) fn record_child(
+    rows: &mut HashMap<ProxyChildKey, ProxyChildStat>,
+    dropped: &mut u64,
+    key: ProxyChildKey,
+    inclusive: u64,
+    exclusive: u64,
+    limit: usize,
+) {
+    if rows.contains_key(&key) || rows.len() < limit {
+        let row = rows.entry(key).or_default();
+        row.calls = row.calls.saturating_add(1);
+        row.inclusive_ticks = row.inclusive_ticks.saturating_add(inclusive);
+        row.exclusive_ticks = row.exclusive_ticks.saturating_add(exclusive);
+    } else {
+        *dropped = dropped.saturating_add(1);
+    }
+}
+
 /* Captured directly by the original InvokeStatic/InvokeVirtual hook stack.
    Only direct children of recognized virtual proxy/wrapper calls are recorded.
    This does NOT identify receiver object or VM method implementation. */
@@ -148,6 +169,24 @@ pub(super) fn export_runtime_children(developer_dir: &Path) -> std::io::Result<(
 #[cfg(test)]
 mod runtime_tests {
     use super::is_proxy;
+    #[test]
+    fn bounded_child_records_keep_existing_keys_and_count_new_overflow() {
+        use super::{record_child, ProxyChildKey};
+        use std::collections::HashMap;
+        let p = super::CallsiteKey { caller: 1, line: 2, kind: 1, target: 3 };
+        let a = super::CallsiteKey { caller: 4, line: 5, kind: 0, target: 6 };
+        let b = super::CallsiteKey { caller: 7, line: 8, kind: 0, target: 9 };
+        let mut rows = HashMap::new();
+        let mut dropped = 0;
+        record_child(&mut rows, &mut dropped, ProxyChildKey { proxy:p, child:a }, 100, 70, 1);
+        record_child(&mut rows, &mut dropped, ProxyChildKey { proxy:p, child:b }, 80, 50, 1);
+        record_child(&mut rows, &mut dropped, ProxyChildKey { proxy:p, child:a }, 30, 20, 1);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(dropped, 1);
+        let stat = rows.get(&ProxyChildKey { proxy:p, child:a }).unwrap();
+        assert_eq!((stat.calls, stat.inclusive_ticks, stat.exclusive_ticks), (2, 130, 90));
+    }
+
     #[test]
     fn only_named_proxy_wrapper_targets_are_tracked() {
         assert!(is_proxy("proxy$132"));
