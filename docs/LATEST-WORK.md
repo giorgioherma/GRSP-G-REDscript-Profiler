@@ -1,5 +1,12 @@
 # GRSP latest verified work
 
+## 2026-11-16 — native post-F11 unresolved proxy attribution, preliminary source change
+
+- GRSP dev changes `src/proxy_attribution.rs`, `src/lib.rs`, `OUTPUT_SCHEMA.md` at commits `f194089`, `a898195`, `9660051` add a source-keyed `RSP_ProxyAttribution.csv` after F11 STOP. Uses the **existing** bounded native hot-path and merged callsite records; no new VM hook, argument read or runtime state mutation. Distinguishes unresolved virtual wrapper/proxy targets from source owner logic, shows sparse captured parent context and explicit unknown receiver/entry/causality, without falsely assigning costs to mods.
+- **Verification pending:** Rust Windows `cargo test --lib --locked`, both original/strict-F11 cargo checks, native release DLL, corresponding GCO artifact adoption and actual game capture have **not yet been confirmed** for these changes. No optimization output, compiler/gameplay performance claim or release. Do not promote stable GRSP `main`.
+- **Next:** inspect automatic owner-native CI, fix legitimate compilation/contracts if required and validate real `RSP_ProxyAttribution.csv` after one new complete F11 capture. A virtual receiver remains UNRESOLVED; if the new report cannot answer it, separately design bounded capture-time receiver identity evidence with overhead validation.
+
+
 ## 2026-11-16 — GRSP scope reduced to native profiling; REDscript Resolver development moves to GCO
 
 - **Approved ownership:** GRSP owns native REDscript instrumentation, F11 capture, raw measurements, quality/attribution and profiler install/restore. The independent managed REDscript Resolver/Generator and full-stack SCC development now belong to **GCO `dev/redscript/resolver_handoff`**; see [GCO-local handoff](https://github.com/giorgioherma/Gs-Cyberpunk2077_Optimizations/blob/dev/redscript/resolver_handoff/docs/integration/REDSCRIPT-RESOLVER-LOCAL-HANDOFF.md).
