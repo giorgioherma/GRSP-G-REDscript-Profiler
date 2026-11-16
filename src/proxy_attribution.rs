@@ -3,7 +3,7 @@
 //! callback entries, change VM hooks, or charge downstream cost to the caller.
 use super::*;
 
-fn is_proxy(name: &str) -> bool {
+pub(super) fn is_proxy(name: &str) -> bool {
     name.contains("proxy$") || name.contains("wrapper$")
 }
 
@@ -100,5 +100,59 @@ mod tests {
             "NAMED_TARGET_RECEIVER_NOT_PROVEN");
         assert_eq!(classification("UNRESOLVED_VIRTUAL", "IsAtToilet"),
             "NOT_PROXY_OR_WRAPPER");
+    }
+}
+
+/* Captured directly by the original InvokeStatic/InvokeVirtual hook stack.
+   Only direct children of recognized virtual proxy/wrapper calls are recorded.
+   This does NOT identify receiver object or VM method implementation. */
+pub(super) fn export_runtime_children(developer_dir: &Path) -> std::io::Result<()> {
+    let funcs = FUNCTIONS.read();
+    let targets = TARGET_NAMES.read();
+    let edges = PROXY_CHILDREN.read();
+    let dropped = PROXY_CHILDREN_DROPPED.load(Ordering::Relaxed);
+    let capture = CAPTURE_ID.load(Ordering::Relaxed);
+
+    let mut rows: Vec<_> = edges.iter().collect();
+    rows.sort_by(|a,b|
+        b.1.inclusive_ticks.cmp(&a.1.inclusive_ticks)
+            .then(b.1.calls.cmp(&a.1.calls)));
+
+    let mut out = BufWriter::new(File::create(
+        developer_dir.join("RSP_ProxyChildren.csv"))?);
+    writeln!(out, "capture_id,proxy_stable_callsite_id,proxy_source_owner,proxy_source_function,proxy_source_path,proxy_source_line,proxy_target,proxy_resolution,child_stable_callsite_id,child_source_owner,child_source_function,child_source_path,child_source_line,child_target,child_resolution,observed_direct_child_edges,observed_child_inclusive_ms,observed_child_exclusive_ms,dropped_new_proxy_child_keys_global,relationship,receiver_proven,callee_execution_proven")?;
+
+    for (key, stat) in rows {
+        let Some(proxy_meta) = funcs.get(&key.proxy.caller) else { continue; };
+        let Some(child_meta) = funcs.get(&key.child.caller) else { continue; };
+        let proxy_target = target_info(key.proxy, &funcs, &targets);
+        let child_target = target_info(key.child, &funcs, &targets);
+        // Avoid claims about total VM work; nested inclusive work overlaps.
+        writeln!(out,
+            "{},RSPC-{:016X},{},{},{},{},{},{},RSPC-{:016X},{},{},{},{},{},{},{},{:.6},{:.6},{},DIRECT_VM_HOOK_NESTING,false,false",
+            capture,
+            stable_callsite_hash(proxy_meta, key.proxy, &proxy_target),
+            csv(&proxy_meta.owner), csv(&proxy_meta.function),
+            csv(&proxy_meta.source_path), key.proxy.line,
+            csv(&proxy_target.display), proxy_target.resolution,
+            stable_callsite_hash(child_meta, key.child, &child_target),
+            csv(&child_meta.owner), csv(&child_meta.function),
+            csv(&child_meta.source_path), key.child.line,
+            csv(&child_target.display), child_target.resolution,
+            stat.calls, ticks_to_ms(stat.inclusive_ticks),
+            ticks_to_ms(stat.exclusive_ticks), dropped)?;
+    }
+    out.flush()
+}
+
+#[cfg(test)]
+mod runtime_tests {
+    use super::is_proxy;
+    #[test]
+    fn only_named_proxy_wrapper_targets_are_tracked() {
+        assert!(is_proxy("proxy$132"));
+        assert!(is_proxy("wrapper$123"));
+        assert!(!is_proxy("Update"));
+        assert!(!is_proxy("GetWorldPosition"));
     }
 }
