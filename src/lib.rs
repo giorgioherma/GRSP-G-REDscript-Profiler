@@ -917,17 +917,11 @@ fn exit_profiled_call(expected_key: CallsiteKey, end_qpc: u64) {
         // The key count is strictly bounded per thread and F11 capture.
         if let Some(parent) = t.stack.last().copied() {
             if parent.is_virtual_proxy {
-                let edge = ProxyChildKey { proxy: parent.key, child: active.key };
-                if t.proxy_children.contains_key(&edge)
-                    || t.proxy_children.len() < MAX_PROXY_CHILD_KEYS_PER_THREAD
-                {
-                    let e = t.proxy_children.entry(edge).or_default();
-                    e.calls = e.calls.saturating_add(1);
-                    e.inclusive_ticks = e.inclusive_ticks.saturating_add(inclusive);
-                    e.exclusive_ticks = e.exclusive_ticks.saturating_add(exclusive);
-                } else {
-                    t.proxy_children_dropped = t.proxy_children_dropped.saturating_add(1);
-                }
+                proxy_attribution::record_child(
+                    &mut t.proxy_children, &mut t.proxy_children_dropped,
+                    ProxyChildKey { proxy: parent.key, child: active.key },
+                    inclusive, exclusive, MAX_PROXY_CHILD_KEYS_PER_THREAD,
+                );
             }
         }
 
