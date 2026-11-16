@@ -34,7 +34,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Validate exact source-owned instrumentation and existing F11 lifecycle
-        run: python -m unittest discover -s tests -p 'test_callback_instrumentation_contract.py' -v
+        run: |
+          python -m unittest discover -s tests -p 'test_callback_instrumentation_contract.py' -v
+          python -m unittest discover -s tests -p 'test_proxy_attribution_contract.py' -v
       - uses: dtolnay/rust-toolchain@stable
       - name: Resolve and lock the same source-owned Rust dependencies
         run: cargo generate-lockfile
@@ -72,7 +74,7 @@ jobs:
             throw 'GRSP native output is not a Windows PE binary'
           }
           $asText=[Text.Encoding]::ASCII.GetString($bytes)
-          foreach($name in @('RSP_CallbackPressure.csv','RSP_CallbackTargets.csv','RSP_ProxyAttribution.csv','GCO-F11-Complete.flag')) {
+          foreach($name in @('RSP_CallbackPressure.csv','RSP_CallbackTargets.csv','RSP_ProxyAttribution.csv','RSP_ProxyChildren.csv','GCO-F11-Complete.flag')) {
             if (!$asText.Contains($name)) { throw "Native DLL does not embed developer writer $name" }
           }
           $folder='instrumentation-native-artifact'
