@@ -1,5 +1,13 @@
 # GRSP latest verified work
 
+## 2026-11-16 — obsolete managed Resolver remnants removed after GCO preservation
+
+- Reconfirmed GCO `dev/redscript/resolver_handoff` contains the active managed `src/GRedscript.Resolver`. The two remaining historical GRSP files `docs/RESOLVER_HANDOFF.md` and `docs/RESOLVER_PROGRESS.md` were archived **byte-for-byte** in GCO `docs/integration/reference/GRSP-historical-*` (matching original Git blob hashes) and then deleted from this GRSP dev branch at `4c24ef6` and `f131afb`. Original Git history remains, but no active managed Resolver implementation, tests, workflow or historical handoff documents remain in GRSP's current tree.
+- The recent profiler-owned `src/proxy_attribution.rs` was likewise preserved byte-for-byte in GCO `docs/integration/reference/GRSP-proxy_attribution.rs` with a nonexecuting native handoff document. This is only a reference copy: native implementation and F11 profiler remain GRSP-owned; managed compiler/generator remain GCO-owned. Existing GCO UI, CET and GRSP `main` untouched.
+- Independent GRSP `native-instrumentation.yml` now tracks the proxy module and contract changes and verifies the expected exported DLL contains `RSP_ProxyAttribution.csv` (`fc9d0d8`). New source contract at `tests/test_proxy_attribution_contract.py` (`b2c4827`). Workflow/contract build results after these commits are **NOT YET VERIFIED**; no game capture or native receiver resolution claimed.
+- Former resolver development branch name `dev/resolver-profiler-handoff` remains as a **branch name only** until a separately approved branch retirement; it is not authoritative for managed Resolver work. Further native-only work must not create managed Resolver duplicates.
+
+
 ## 2026-11-16 — first GRSP-native proxy-boundary instrumentation implementation (not yet CI validated)
 
 - Profiler owner `GRSP dev/resolver-profiler-handoff` now exports `RSP_ProxyAttribution.csv` after complete F11. Implementation `src/proxy_attribution.rs` and native registration in `src/lib.rs`; commits `f194089`, `a898195`, and optimized bounded single-pass aggregation `fa676e9`. Capture-timed Invoke hooks, existing `RSP_CallSites` and profiler install/restore unchanged. The result preserves exact source/target identity, proxy/virtual unresolved labels, observed work and sparse path context; receiver/entry/causal proof are explicitly **false**. See GRSP `OUTPUT_SCHEMA.md`.
