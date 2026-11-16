@@ -98,6 +98,12 @@ internal sealed class SourceAdmission
 
     // Invocation-local drift identity. No hardcoded mod versions or permanent
     // original hashes. Paths and source text are never emitted in audit JSON.
+    // Scanner may only grant structural candidacy for files the same
+    // validated source index admitted; tokenization alone is insufficient.
+    internal bool IsFileIndexed(string fullPath) =>
+        files.TryGetValue(Path.GetFullPath(fullPath), out ParsedFile? parsed) &&
+        parsed.Valid;
+
     internal string FingerprintCurrentSources()
     {
         using var fingerprint = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
