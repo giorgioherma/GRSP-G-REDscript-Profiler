@@ -5,7 +5,7 @@ name: GRSP instrumentation evidence CI
 # independent from the GCO integration/packaging workflow.
 on:
   push:
-    branches: [ 'dev/resolver-profiler-handoff' ]
+    branches: [ 'dev/native-instrumentation' ]
     paths:
       - '.github/workflows/native-instrumentation.yml'
       - 'src/lib.rs'
@@ -25,7 +25,7 @@ concurrency:
 
 jobs:
   source-contracts:
-    if: github.ref == 'refs/heads/dev/resolver-profiler-handoff'
+    if: github.ref == 'refs/heads/dev/native-instrumentation'
     runs-on: windows-latest
     timeout-minutes: 25
     steps:
@@ -52,7 +52,7 @@ jobs:
   native-instrumentation:
     # Build once at the authoritative GRSP owner on every relevant dev push.
     # GCO consumes only this SHA-verified artifact: no GCO native Rust build.
-    if: github.ref == 'refs/heads/dev/resolver-profiler-handoff'
+    if: github.ref == 'refs/heads/dev/native-instrumentation'
     needs: source-contracts
     runs-on: windows-latest
     timeout-minutes: 40
