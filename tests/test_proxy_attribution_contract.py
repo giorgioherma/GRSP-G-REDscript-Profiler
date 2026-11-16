@@ -60,6 +60,34 @@ class ProxyAttributionContract(unittest.TestCase):
         self.assertIn("PROXY_CHILDREN_DROPPED", self.native)
         self.assertIn("ProxyChildKey { proxy: parent.key, child: active.key }", self.native)
 
+    def test_hook_safety_guard_and_preallocated_counters(self):
+        self.assertIn("TLS_PROFILER_BOOKKEEPING.try_with", self.native)
+        self.assertIn("if busy.replace(true) { return None; }", self.native)
+        self.assertIn("let _reset = ProfileBookkeepingReset(busy);", self.native)
+        self.assertIn(
+            "initial.proxy_children.reserve(MAX_PROXY_CHILD_KEYS_PER_THREAD);",
+            self.native)
+        self.assertIn(
+            "initial.virtual_proxy_targets.reserve(MAX_PROXY_TARGETS_PER_THREAD);",
+            self.native)
+        self.assertIn(
+            "PROXY_TARGET_REGISTRATIONS_DROPPED.fetch_add(", self.native)
+        self.assertIn("unregistered_proxy_targets_global", self.proxy)
+        for hook, target in (
+            ("on_invoke_static(", "None"),
+            ("on_invoke_virtual(", "Some(instr.name)"),
+        ):
+            body = self.native.split(f"fn {hook}", 1)[1].split("\nfn ", 1)[0]
+            self.assertIn(
+                f"with_profile_bookkeeping(|| enter_profiled_call(key, {target}))",
+                body)
+            self.assertIn(
+                "unsafe { cb(i, f, a3, a4) };\n    let _ = "
+                "with_profile_bookkeeping(|| exit_profiled_call(key, qpc_now()));",
+                body)
+        self.assertIn("bookkeeping_guard_refuses_reentrant_entry_and_resets", self.native)
+        self.assertIn("bounded_proxy_counters_have_capacity_before_records", self.native)
+
     def test_native_ci_builds_and_validates_exact_owned_output(self):
         self.assertIn("'src/proxy_attribution.rs'", self.workflow)
         self.assertIn("'tests/test_proxy_attribution_contract.py'", self.workflow)
