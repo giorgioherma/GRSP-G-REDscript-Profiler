@@ -912,6 +912,14 @@ fn exit_profiled_call(expected_key: CallsiteKey, end_qpc: u64) {
             parent.child_ticks = parent.child_ticks.saturating_add(inclusive);
         }
 
+        let state = PROFILE_STATE.load(Ordering::Acquire);
+        let capture_id = CAPTURE_ID.load(Ordering::Relaxed);
+        let stop_qpc = CAPTURE_STOP_QPC.load(Ordering::Acquire);
+        let inside_window = t.capture_id == capture_id
+            && (state == STATE_RECORDING || state == STATE_STOPPING)
+            && (state == STATE_RECORDING || stop_qpc == 0 || end_qpc <= stop_qpc);
+
+        if inside_window {
         // Actual runtime parent->child relationship, NOT a resolved virtual receiver.
         // Record only direct children of named virtual proxy/wrapper calls.
         // The key count is strictly bounded per thread and F11 capture.
@@ -925,14 +933,6 @@ fn exit_profiled_call(expected_key: CallsiteKey, end_qpc: u64) {
             }
         }
 
-        let state = PROFILE_STATE.load(Ordering::Acquire);
-        let capture_id = CAPTURE_ID.load(Ordering::Relaxed);
-        let stop_qpc = CAPTURE_STOP_QPC.load(Ordering::Acquire);
-        let inside_window = t.capture_id == capture_id
-            && (state == STATE_RECORDING || state == STATE_STOPPING)
-            && (state == STATE_RECORDING || stop_qpc == 0 || end_qpc <= stop_qpc);
-
-        if inside_window {
             let stat = t.frame_stats.entry(active.key).or_default();
             stat.calls = stat.calls.saturating_add(1);
             stat.inclusive_ticks = stat.inclusive_ticks.saturating_add(inclusive);
