@@ -91,31 +91,34 @@ function Invoke-HeadlessScc {
       # is retained only as an isolated-runner diagnostic.
       $safeUnresolved='NOT_IDENTIFIED'
       $locationParsed=$false
-      if (Test-Path -LiteralPath $privateLog -PathType Leaf) {
-        $diagnostic=Get-Content -LiteralPath $privateLog -Raw
-        # Native SCC diagnostic format: [UNRESOLVED_REF] At <private-path>.reds:line:column
-        # The private path and source line MUST never leave the runner.
+      $nativeLogFiles=@(Get-ChildItem -LiteralPath (Join-Path $r6 'logs') -Filter 'redscript*.log' -File)
+      $diagnosticFiles=@($privateLog) + @($nativeLogFiles | ForEach-Object FullName)
+      foreach($diagnosticFile in $diagnosticFiles) {
+        if (!(Test-Path -LiteralPath $diagnosticFile -PathType Leaf)) { continue }
+        $diagnostic=Get-Content -LiteralPath $diagnosticFile -Raw
         $position=[regex]::Match($diagnostic,'(?i)\bAt\s+(.+?\.reds):(\d+):(\d+)')
-        if ($position.Success) {
-          $locationParsed=$true
-          $filePath=$position.Groups[1].Value
-          $lineNo=[int]$position.Groups[2].Value
-          $columnNo=[int]$position.Groups[3].Value
-          if ((Test-Path -LiteralPath $filePath -PathType Leaf) -and $lineNo -gt 0 -and $columnNo -gt 0) {
-            $sourceLine=@(Get-Content -LiteralPath $filePath)[$lineNo-1]
-            if ($null -ne $sourceLine) {
-              $columnIndex=$columnNo-1
-              foreach($match in [regex]::Matches([string]$sourceLine,'[A-Za-z_][A-Za-z0-9_]*')) {
-                if ($match.Index -le $columnIndex -and $columnIndex -lt ($match.Index+$match.Length)) {
-                  if ($match.Value.Length -le 100) { $safeUnresolved=$match.Value }
-                  break
-                }
-              }
-            }
+        if (!$position.Success) { continue }
+        $locationParsed=$true
+        $filePath=$position.Groups[1].Value
+        $lineNo=[int]$position.Groups[2].Value
+        $columnNo=[int]$position.Groups[3].Value
+        if (!(Test-Path -LiteralPath $filePath -PathType Leaf) -or $lineNo -lt 1 -or $columnNo -lt 1) { continue }
+        $sourceLine=@(Get-Content -LiteralPath $filePath)[$lineNo-1]
+        if ($null -eq $sourceLine) { continue }
+        $columnIndex=$columnNo-1
+        foreach($match in [regex]::Matches([string]$sourceLine,'[A-Za-z_][A-Za-z0-9_]*')) {
+          if ($match.Index -le $columnIndex -and $columnIndex -lt ($match.Index+$match.Length)) {
+            if ($match.Value.Length -le 100) { $safeUnresolved=$match.Value }
+            break
           }
         }
+        if ($safeUnresolved -ne 'NOT_IDENTIFIED') { break }
       }
-      throw ('R6_HEADLESS_SCC_COMPILATION_FAILED: phase='+$Phase+' errorCodes='+$safeCodes+' unresolvedIdentifier='+$safeUnresolved+' locationParsed='+$locationParsed+' diagnosticBytes='+$result.diagnosticBytes+' rawErrorsRunnerPrivate=true')
+      $nativeLogCount=$nativeLogFiles.Count
+      $nativeLogHasLocation=[bool](@($nativeLogFiles | Where-Object {
+        [regex]::IsMatch((Get-Content -LiteralPath $_.FullName -Raw),'(?i)\.reds:\d+:\d+')
+      }).Count -gt 0)
+      throw ('R6_HEADLESS_SCC_COMPILATION_FAILED: phase='+$Phase+' errorCodes='+$safeCodes+' unresolvedIdentifier='+$safeUnresolved+' nativeLogCount='+$nativeLogCount+' nativeLogHasLocation='+$nativeLogHasLocation+' locationParsed='+$locationParsed+' diagnosticBytes='+$result.diagnosticBytes+' rawErrorsRunnerPrivate=true')
     }
     if ($result.generatedOutputPresent -ne $true -or
         [long]$result.generatedOutputBytes -lt 1048576) {
