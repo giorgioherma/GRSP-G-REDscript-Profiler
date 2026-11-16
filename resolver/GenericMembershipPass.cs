@@ -245,9 +245,15 @@ internal static class GenericMembershipPass
         return result;
     }
 
+    // The source-wide scanner reuses the exact same structural admission.
+    // A missing captured function permits inspection, never rewrite authority.
+    internal static bool HasSourceShape(
+        string text, IReadOnlyList<SourceAdmission.Token> tokens, int line) =>
+        TryMatch(text, tokens, line, null) is not null;
+
     private static Match? TryMatch(
         string text, IReadOnlyList<SourceAdmission.Token> t,
-        int line, string function)
+        int line, string? function)
     {
         var eligible = Enumerable.Range(0, t.Count)
             .Where(i => t[i].Value == "for" && t[i].Line == line).ToArray();
@@ -282,11 +288,14 @@ internal static class GenericMembershipPass
         for (int j = 0; j < i - 3; j++)
         {
             if (t[j].Value != "func" || t[j + 2].Value != "(") continue;
-            string capturedName = function.Contains("::", StringComparison.Ordinal)
-                ? function.Split("::").Last()
-                : function.Split('.').Last();
-            if (!t[j + 1].Value.Equals(capturedName, StringComparison.Ordinal))
-                continue;
+            if (function is not null)
+            {
+                string capturedName = function.Contains("::", StringComparison.Ordinal)
+                    ? function.Split("::").Last()
+                    : function.Split('.').Last();
+                if (!t[j + 1].Value.Equals(capturedName, StringComparison.Ordinal))
+                    continue;
+            }
             int open = FindOpeningMethodBrace(t, j + 2);
             if (open < 0) continue;
             int close = Closing(t, open);
