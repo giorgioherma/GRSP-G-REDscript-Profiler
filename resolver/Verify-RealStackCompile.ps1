@@ -249,9 +249,11 @@ try {
     $owner=$dir.Parent.Name
     if ($providers.ContainsKey($owner)) { throw 'R6_DUPLICATE_SCRIPT_PROVIDER_REFUSED' }
     if ($owner -notmatch '^[A-Za-z0-9_. -]{1,100}$') { throw 'R6_INVALID_SCRIPT_PROVIDER_NAME' }
-    $files=@(Get-ChildItem -LiteralPath $dir.FullName -File -Recurse)
-    if (@($files | Where-Object { $_.Extension -ne '.reds' -or
-        ($_.Attributes -band [System.IO.FileAttributes]::ReparsePoint) }).Count -gt 0) {
+    # Plugin archives may also contain README/config/assets; they are not
+    # compiler declarations. Only stage verified source .reds files.
+    $files=@(Get-ChildItem -LiteralPath $dir.FullName -File -Recurse -Filter '*.reds')
+    if (@($files | Where-Object {
+        $_.Attributes -band [System.IO.FileAttributes]::ReparsePoint }).Count -gt 0) {
       throw 'R6_UNSAFE_PLUGIN_SCRIPT_ENTRY'
     }
     $providers[$owner]=@($files | ForEach-Object {
