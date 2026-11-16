@@ -68,6 +68,9 @@ function Invoke-HeadlessScc {
     Write-Host ('R6 SCC headless: phase='+$Phase+' seconds='+[Math]::Round($timer.Elapsed.TotalSeconds,1)+' cpuSeconds='+$cpu+' exit='+$exitLabel)
     if (!$exited) { throw ('R6_HEADLESS_SCC_TIMEOUT: phase='+$Phase+' limit='+$TimeoutSeconds+'s') }
     if (!(Test-Path -LiteralPath $report -PathType Leaf)) {
+      $missingExternalAbi=[bool]($err -match 'scc_settings_add_script_path')
+      $missingNativeSymbol=[bool]($err -match '(?i)entry point|export|symbol')
+      Write-Host ('R6 headless launch diagnostics: externalScriptAbiMentioned='+$missingExternalAbi+' missingNativeSymbolHint='+$missingNativeSymbol)
       throw ('R6_HEADLESS_SCC_REPORT_MISSING: phase='+$Phase+' exit='+$p.ExitCode+' stderrChars='+$err.Length)
     }
     $result=Get-Content -LiteralPath $report -Raw | ConvertFrom-Json -Depth 40
