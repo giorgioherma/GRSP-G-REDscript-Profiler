@@ -37,6 +37,7 @@ const MAX_SPIKE_EVENTS: usize = 100_000;
 const MAX_HOT_PATH_EVENTS: usize = 50_000;
 // Bound runtime proxy-child relationship cardinality per capture/thread.
 const MAX_PROXY_CHILD_KEYS_PER_THREAD: usize = 4096;
+const MAX_PROXY_TARGETS_PER_THREAD: usize = 1024;
 const PUBLIC_TIMELINE_BUCKET_MS: u64 = 50;
 const STOP_DRAIN_WAIT_MS: u64 = 10_000;
 
@@ -246,6 +247,7 @@ struct ThreadState {
     caller_cache: HashMap<usize, CallerCacheEntry>,
     virtual_name_seen: HashSet<u64>,
     virtual_proxy_targets: HashSet<u64>,
+    proxy_target_registrations_dropped: u64,
     stack: Vec<ActiveCall>,
     proxy_children: HashMap<ProxyChildKey, ProxyChildStat>,
     proxy_children_dropped: u64,
@@ -269,6 +271,7 @@ impl ThreadState {
         self.stack.clear();
         self.proxy_children.clear();
         self.proxy_children_dropped = 0;
+        self.proxy_target_registrations_dropped = 0;
         self.current_frame_id = 0;
         self.frame_initialized = false;
         self.frame_stats.clear();
@@ -303,6 +306,27 @@ unsafe impl Sync for ThreadShard {}
 
 thread_local! {
     static TLS_SHARD: Cell<*mut ThreadShard> = const { Cell::new(std::ptr::null_mut()) };
+    // Guards only profiler bookkeeping. The original VM callback is ALWAYS
+    // invoked outside the guard so legitimate nested script calls remain visible.
+    static TLS_PROFILER_BOOKKEEPING: Cell<bool> = const { Cell::new(false) };
+}
+
+struct ProfileBookkeepingReset<'a>(&'a Cell<bool>);
+impl Drop for ProfileBookkeepingReset<'_> {
+    fn drop(&mut self) { self.0.set(false); }
+}
+
+/// Never take a second mutable ThreadState reference if profiler bookkeeping
+/// indirectly re-enters a hooked VM opcode. Refuse just that measurement;
+/// the caller still invokes the unmodified engine callback exactly once.
+/// A checked TLS lookup also fails open during thread-local teardown.
+#[inline]
+fn with_profile_bookkeeping<R>(work: impl FnOnce() -> R) -> Option<R> {
+    TLS_PROFILER_BOOKKEEPING.try_with(|busy| {
+        if busy.replace(true) { return None; }
+        let _reset = ProfileBookkeepingReset(busy);
+        Some(work())
+    }).ok().flatten()
 }
 
 static SHARDS: LazyLock<RwLock<Vec<usize>>> = LazyLock::new(|| RwLock::new(Vec::new()));
@@ -323,6 +347,7 @@ static CROSS_MOD_EDGES: LazyLock<RwLock<HashMap<CrossModKey, CrossModStat>>> =
 static PROXY_CHILDREN: LazyLock<RwLock<HashMap<ProxyChildKey, ProxyChildStat>>> =
     LazyLock::new(|| RwLock::new(HashMap::new()));
 static PROXY_CHILDREN_DROPPED: AtomicU64 = AtomicU64::new(0);
+static PROXY_TARGET_REGISTRATIONS_DROPPED: AtomicU64 = AtomicU64::new(0);
 static FRAME_BOUNDARIES: LazyLock<RwLock<Vec<FrameBoundary>>> =
     LazyLock::new(|| RwLock::new(Vec::new()));
 static FRAMES: LazyLock<RwLock<Vec<FrameStat>>> = LazyLock::new(|| RwLock::new(Vec::new()));
@@ -591,13 +616,13 @@ unsafe extern "C" fn on_invoke_static(
         target: instr.func as usize as u64,
     };
 
-    if !enter_profiled_call(key, None) {
+    if !with_profile_bookkeeping(|| enter_profiled_call(key, None)).unwrap_or(false) {
         unsafe { cb(i, f, a3, a4) };
         return;
     }
 
     unsafe { cb(i, f, a3, a4) };
-    exit_profiled_call(key, qpc_now());
+    let _ = with_profile_bookkeeping(|| exit_profiled_call(key, qpc_now()));
 }
 
 unsafe extern "C" fn on_invoke_virtual(
@@ -633,13 +658,13 @@ unsafe extern "C" fn on_invoke_virtual(
         target: target_hash,
     };
 
-    if !enter_profiled_call(key, Some(instr.name)) {
+    if !with_profile_bookkeeping(|| enter_profiled_call(key, Some(instr.name))).unwrap_or(false) {
         unsafe { cb(i, f, a3, a4) };
         return;
     }
 
     unsafe { cb(i, f, a3, a4) };
-    exit_profiled_call(key, qpc_now());
+    let _ = with_profile_bookkeeping(|| exit_profiled_call(key, qpc_now()));
 }
 
 fn with_thread_state<R>(f: impl FnOnce(&mut ThreadState) -> R) -> R {
@@ -648,6 +673,12 @@ fn with_thread_state<R>(f: impl FnOnce(&mut ThreadState) -> R) -> R {
         if ptr.is_null() {
             let mut initial = ThreadState::default();
             initial.thread_id = current_thread_id();
+            // Allocate the new instrumentation's bounded storage only once
+            // per thread, before any captured proxy-child row can be inserted.
+            // Clear on F11 replay retains this capacity; no rehash/growth in
+            // the script-invoke hot path while the key caps are respected.
+            initial.proxy_children.reserve(MAX_PROXY_CHILD_KEYS_PER_THREAD);
+            initial.virtual_proxy_targets.reserve(MAX_PROXY_TARGETS_PER_THREAD);
             let shard = Box::new(ThreadShard {
                 state: UnsafeCell::new(initial),
             });
@@ -821,7 +852,12 @@ fn enter_profiled_call(key: CallsiteKey, virtual_name: Option<CName>) -> bool {
             if let Some(name) = virtual_name {
                 if t.virtual_name_seen.insert(key.target) {
                     if proxy_attribution::is_proxy(name.as_str()) {
-                        t.virtual_proxy_targets.insert(key.target);
+                        if t.virtual_proxy_targets.len() < MAX_PROXY_TARGETS_PER_THREAD {
+                            t.virtual_proxy_targets.insert(key.target);
+                        } else {
+                            t.proxy_target_registrations_dropped =
+                                t.proxy_target_registrations_dropped.saturating_add(1);
+                        }
                     }
                     TARGET_NAMES
                         .write()
@@ -1173,6 +1209,7 @@ fn merge_all_shards() -> bool {
     CROSS_MOD_EDGES.write().clear();
     PROXY_CHILDREN.write().clear();
     PROXY_CHILDREN_DROPPED.store(0, Ordering::Relaxed);
+    PROXY_TARGET_REGISTRATIONS_DROPPED.store(0, Ordering::Relaxed);
     FRAMES.write().clear();
     FRAME_OWNERS.write().clear();
 
@@ -1220,6 +1257,8 @@ fn merge_all_shards() -> bool {
             }
 
             PROXY_CHILDREN_DROPPED.fetch_add(t.proxy_children_dropped, Ordering::Relaxed);
+            PROXY_TARGET_REGISTRATIONS_DROPPED.fetch_add(
+                t.proxy_target_registrations_dropped, Ordering::Relaxed);
             for (key, local) in t.proxy_children.iter() {
                 let e = global_proxy.entry(*key).or_default();
                 e.calls = e.calls.saturating_add(local.calls);
@@ -1576,6 +1615,7 @@ fn clear_measurement_state() {
     CROSS_MOD_EDGES.write().clear();
     PROXY_CHILDREN.write().clear();
     PROXY_CHILDREN_DROPPED.store(0, Ordering::Relaxed);
+    PROXY_TARGET_REGISTRATIONS_DROPPED.store(0, Ordering::Relaxed);
     FRAME_BOUNDARIES.write().clear();
     FRAMES.write().clear();
     FRAME_OWNERS.write().clear();
