@@ -1,5 +1,12 @@
 # GRSP latest verified work
 
+## 2026-11-16 — genuine bounded capture-time proxy-child instrumentation (native-only)
+
+- GRSP native source `src/lib.rs` + `src/proxy_attribution.rs` now records **actual directly nested** InvokeStatic/InvokeVirtual callsite pairs beneath named virtual `proxy$`/`wrapper$` targets during the accepted F11 window. Per-thread distinct-key cap is 4,096 with overflow accounting; existing counts/time and original callbacks retained. CSV `RSP_ProxyChildren.csv` is exported after STOP, alongside `RSP_ProxyAttribution.csv`. This **does not resolve runtime receivers** and does not prove optimization safety or causal downstream costs; `receiver_proven=false`, `callee_execution_proven=false`.
+- Tests extend existing Rust module with capped-key/overflow behavior plus independent Python source/lifecycle contract. The canonical GRSP `native-instrumentation.yml` builds native source and checks DLL strings and SHA/Cargo.lock on owner CI. Development commits `4e3cefc`, `7f77c3b`, `99df4e8`, `b74b8af`, `2443dc6`, `3fdc371`, `01d40b7`, docs `e10c69e`.
+- **CI and in-game F11 NOT VERIFIED in this session.** Current implementation source is on GRSP profiler branch only; old `resolver-ci.yml` is retired and must not be restored. GCO `dev/redscript/resolver_handoff` separately imports owner-built native artifact; no GRSP managed Resolver source reintroduced.
+
+
 ## 2026-11-16 — obsolete managed Resolver remnants removed after GCO preservation
 
 - Reconfirmed GCO `dev/redscript/resolver_handoff` contains the active managed `src/GRedscript.Resolver`. The two remaining historical GRSP files `docs/RESOLVER_HANDOFF.md` and `docs/RESOLVER_PROGRESS.md` were archived **byte-for-byte** in GCO `docs/integration/reference/GRSP-historical-*` (matching original Git blob hashes) and then deleted from this GRSP dev branch at `4c24ef6` and `f131afb`. Original Git history remains, but no active managed Resolver implementation, tests, workflow or historical handoff documents remain in GRSP's current tree.
