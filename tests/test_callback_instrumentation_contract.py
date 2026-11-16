@@ -37,7 +37,7 @@ class CallbackInstrumentationContract(unittest.TestCase):
 
     def test_native_package_requires_independent_owner_ci(self):
         self.assertIn('workflow_dispatch:', self.workflow)
-        self.assertIn("if: github.ref == 'refs/heads/dev/resolver-profiler-handoff'", self.workflow)
+        self.assertIn("if: github.ref == 'refs/heads/dev/native-instrumentation'", self.workflow)
         self.assertIn("needs: source-contracts", self.workflow)
         self.assertIn("cargo test --lib --locked", self.workflow)
         self.assertIn("cargo build --release --locked", self.workflow)
