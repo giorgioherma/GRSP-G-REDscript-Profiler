@@ -1,5 +1,13 @@
 # GRSP latest verified work
 
+## 2026-11-16 — CET-inspired cross-callback shared-read instrumentation (zero added hooks)
+
+- Using the CET registration-scoped callback/allocator evidence model and generic shared-provider concept as a comparison, the REDscript profiler now exports **post-F11** `RSP_CallbackReuse.csv`. It derives target/frame overlap from previously recorded `AggStat.frame_calls` and callback-like source functions, not from another VM interception point. Source commit `7957284cf7483c932678e16f0c0cbd088d8697ae` plus Rust tests `0f4b1686c4dc2c0b11d1ff5fa4d0d19f94386d4e`; source contracts updated `03542a8ebea04803d84afc20534b01f7246c0b0f` and native workflow PE-marker gate updated `d1ca6279254981b64dd61ac4836569bc9be04ac5`.
+- Evidence: repeated *outgoing read-like edges* within frames, overlap across source callback functions and owners, execution frequency and summed instrumented exclusive ticks. Generic getter-family search, maximum 128 target groups and 200,000 post-stop frame-key rows; overflow explicitly identified. No mod list; no VM hook, no hot-path allocation, no new SDK/ABI boundary and no optimized files. Not proof of actual callback entries, pure/read-only functions, unchanged arguments, identical receivers, common result or safe caching.
+- Read-only interpretation and source/CSV validation are GCO owned (`CallbackReuseEvidence`); framework reuse can consider G-REDruntime's existing weak-reference `StateCache`, `ContextService` and lifetime invalidation. Do not implement a competing native state store or authorize a shared-state rewrite solely on high call rate.
+- **CI exact:** GRSP native [#23](https://github.com/giorgioherma/GRSP-G-REDscript-Profiler/actions/runs/43861198409) source-contracts SUCCESS (Python contracts, Rust unit tests, cargo check); native DLL release build and upload **in progress at the last observation**. GCO managed evidence CI [#512](https://github.com/giorgioherma/Gs-Cyberpunk2077_Optimizations/actions/runs/43861939830) SUCCESS before the new native bundle gate; native output and gameplay are not verified yet. Prior crash safety barrier preserved.
+
+
 ## 2026-11-16 — crash-motivated VM hook safety hardening on canonical native-only branch
 
 - **Ownership/branch:** created GRSP `dev/native-instrumentation` from the previously developed native source; the obsolete `dev/resolver-profiler-handoff` branch is no longer authoritative. GRSP retains Rust VM hooks/profiling only. GCO `main` and `dev/redscript/resolver_handoff` were redirected to select GRSP owner-native CI artifacts from this native-only branch; managed Resolver remains in GCO.
