@@ -71,14 +71,22 @@ internal static class HeadlessScc
                 StringComparison.OrdinalIgnoreCase) ||
             File.Exists(output) || File.Exists(report) || File.Exists(log) ||
             (externalScripts is not null &&
-             (!externalScripts.Equals(Path.Combine(workspace, "red4ext", "plugins",
-                   "Codeware", "Scripts"), StringComparison.OrdinalIgnoreCase) ||
+             (!externalScripts.Equals(Path.Combine(workspace, "red4ext", "plugins"),
+                   StringComparison.OrdinalIgnoreCase) ||
               !Directory.Exists(externalScripts) ||
-              !Directory.EnumerateFiles(externalScripts, "*.reds",
-                   SearchOption.AllDirectories).Any())))
+              !Directory.EnumerateDirectories(externalScripts)
+                  .Any(plugin => Directory.Exists(Path.Combine(plugin, "Scripts")))))))
             throw new InvalidDataException(
                 "Headless SCC requires an untouched, explicitly isolated source/cache workspace");
 
+        string[] additionalScriptPaths = externalScripts is null ? Array.Empty<string>() :
+            Directory.EnumerateDirectories(externalScripts)
+                .Select(plugin => Path.Combine(plugin, "Scripts"))
+                .Where(Directory.Exists)
+                .Where(path => Directory.EnumerateFiles(path, "*.reds",
+                    SearchOption.AllDirectories).Any())
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
         Directory.CreateDirectory(Path.Combine(r6, "logs"));
         Directory.CreateDirectory(Path.GetDirectoryName(log)!);
         Directory.CreateDirectory(Path.GetDirectoryName(report)!);
@@ -105,8 +113,8 @@ internal static class HeadlessScc
             IntPtr r6Arg = Marshal.StringToCoTaskMemUTF8(r6);
             IntPtr cacheArg = Marshal.StringToCoTaskMemUTF8(cache);
             IntPtr outputArg = Marshal.StringToCoTaskMemUTF8(output);
-            IntPtr externalArg = externalScripts is null ? IntPtr.Zero :
-                Marshal.StringToCoTaskMemUTF8(externalScripts);
+            IntPtr[] externalArgs = additionalScriptPaths
+                .Select(Marshal.StringToCoTaskMemUTF8).ToArray();
             IntPtr result = IntPtr.Zero;
             try
             {
@@ -115,7 +123,8 @@ internal static class HeadlessScc
                     throw new InvalidDataException("SCC native settings allocation failed");
                 setCache(settings, cacheArg);
                 setOutput(settings, outputArg);
-                if (externalArg != IntPtr.Zero) addScriptPath(settings, externalArg);
+                foreach (IntPtr scriptArg in externalArgs)
+                    addScriptPath(settings, scriptArg);
                 // This is the critical difference from scc.exe: the upstream
                 // CLI hardcodes show_error_popup=true and blocks headless CI.
                 disablePopup(settings);
@@ -144,7 +153,8 @@ internal static class HeadlessScc
                 Marshal.FreeCoTaskMem(r6Arg);
                 Marshal.FreeCoTaskMem(cacheArg);
                 Marshal.FreeCoTaskMem(outputArg);
-                if (externalArg != IntPtr.Zero) Marshal.FreeCoTaskMem(externalArg);
+                foreach (IntPtr scriptArg in externalArgs)
+                    Marshal.FreeCoTaskMem(scriptArg);
             }
         }
         finally { if (lib != IntPtr.Zero) NativeLibrary.Free(lib); }
@@ -175,7 +185,7 @@ internal static class HeadlessScc
             success,
             guiErrorPopupDisabled = true,
             originalCacheUnchanged = true,
-            externalScriptPaths = externalScripts is null ? 0 : 1,
+            externalScriptPaths = additionalScriptPaths.Length,
             generatedOutputPresent = File.Exists(output),
             generatedOutputBytes = File.Exists(output) ? new FileInfo(output).Length : 0,
             errorCodeCounts = codeCounts,
