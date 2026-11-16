@@ -1,4 +1,10 @@
-# GRSP REDscript Resolver/Generator — live progress and decisions
+# GRSP managed REDscript Resolver — archived pre-migration progress
+
+**Current owner decision (2026-11-16):** **No new managed Resolver/Generator/source-transformation/SCC development in GRSP.** [GCO `dev/redscript/resolver_handoff`](https://github.com/giorgioherma/Gs-Cyberpunk2077_Optimizations/tree/dev/redscript/resolver_handoff) is now the sole active home for the independent managed REDscript component. GRSP remains native profiler/instrumentation/F11 evidence owner; see [current GCO-local handoff](https://github.com/giorgioherma/Gs-Cyberpunk2077_Optimizations/blob/dev/redscript/resolver_handoff/docs/integration/REDSCRIPT-RESOLVER-LOCAL-HANDOFF.md). Earlier R0–R10 entries below are **historical/archived** and do not authorize continued GRSP managed source development.
+
+**Migration state:** Code NOT YET MOVED. Keep original GRSP `resolver/`, 41/41 managed CLI contract evidence ([GRSP CI #61](https://github.com/giorgioherma/GRSP-G-REDscript-Profiler/actions/runs/43794298639)), and original full-stack SCC evidence ([GCO #482](https://github.com/giorgioherma/Gs-Cyberpunk2077_Optimizations/actions/runs/43794814481)) for source/parity transfer. Do not delete the working prototype or its tests/CI before equivalent GCO-local validation.
+
+## Archived progress below (pre-ownership move)
 
 **Branch:** `dev/resolver-profiler-handoff`. **Owner:** GRSP. **Current baseline:** `ece5b8e2c65690bb914cc1f90b3c1bd79d740ef8` before this documentation change; stable `main` and 1.0.0 release protected.
 **Canonical blueprint:** https://github.com/giorgioherma/Gs-Cyberpunk2077_Optimizations/blob/feature/redscript-resolver-integration/docs/integration/GRSP_REDscript_Resolver_Blueprint.md
