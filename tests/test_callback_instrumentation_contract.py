@@ -26,6 +26,17 @@ class CallbackInstrumentationContract(unittest.TestCase):
         self.assertIn('GCO-F11-Complete.flag', self.native)
         self.assertIn('RSP_CallbackPressure.csv', self.callback)
         self.assertIn('RSP_CallbackTargets.csv', self.callback)
+        self.assertIn('RSP_CallbackReuse.csv', self.callback)
+        self.assertIn('export_shared_reads(developer_dir, &funcs, &targets, &callsites)', self.callback)
+        self.assertIn('MAX_FRAME_KEYS: usize = 200_000', self.callback)
+        self.assertIn('MAX_GROUPS: usize = 128', self.callback)
+        self.assertIn('callback_entries_proven,cache_safe_proven', self.callback)
+        self.assertIn('TRUNCATED_NOT_ZERO_WORK', self.callback)
+        self.assertIn('repeated_reads_are_frame_overlaps_not_proven_redundant_calls', self.callback)
+        self.assertIn("'RSP_CallbackReuse.csv'", self.workflow)
+        # Native callback entry hooks and source rewrites are explicitly out of scope.
+        self.assertNotIn('attach_hook(', self.callback)
+        self.assertNotIn('hooks! {', self.callback)
 
     def test_no_new_hooks_or_false_callback_entry_claims(self):
         self.assertNotIn('hooks!', self.callback)
