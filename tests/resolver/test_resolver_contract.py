@@ -453,10 +453,10 @@ class GrspResolverContracts(unittest.TestCase):
     def test_source_wide_scanner_refuses_side_effects_and_fake_text_hits(self):
         self.prepare_measured_membership(
             lambda s: s.replace('matched = true;',
-                                'DoSomething();\\n        matched = true;'))
+                                'DoSomething();\n        matched = true;'))
         self.source.write_text(
-            self.source.read_text() + '\\n// for entry in this.names { if Equals(x, y) {} }\\n'
-            '// "for entry in this.names { if Equals(x, y) {} }"\\n')
+            self.source.read_text() + '\n// for entry in this.names { if Equals(x, y) {} }\n'
+            '// "for entry in this.names { if Equals(x, y) {} }"\n')
         result, path = self.scan_generic()
         self.assertEqual(0, result.returncode, result.stderr)
         scan = json.loads(path.read_text())
@@ -468,7 +468,7 @@ class GrspResolverContracts(unittest.TestCase):
     def test_source_wide_scanner_refuses_stale_capture_and_unsafe_output(self):
         self.prepare_measured_membership()
         self.assertEqual(0, self.run_cli().returncode)
-        self.source.write_text(self.source.read_text() + '// source drift\\n')
+        self.source.write_text(self.source.read_text() + '// source drift\n')
         refused, path = self.scan_generic(analysis=self.output)
         self.assertNotEqual(0, refused.returncode)
         self.assertIn('SOURCE_DRIFT_DETECTED', refused.stderr)
