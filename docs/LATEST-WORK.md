@@ -1,5 +1,13 @@
 # GRSP latest verified work
 
+## 2026-11-16 — GRSP scope reduced to native profiling; REDscript Resolver development moves to GCO
+
+- **Approved ownership:** GRSP owns native REDscript instrumentation, F11 capture, raw measurements, quality/attribution and profiler install/restore. The independent managed REDscript Resolver/Generator and full-stack SCC development now belong to **GCO `dev/redscript/resolver_handoff`**; see [GCO-local handoff](https://github.com/giorgioherma/Gs-Cyberpunk2077_Optimizations/blob/dev/redscript/resolver_handoff/docs/integration/REDSCRIPT-RESOLVER-LOCAL-HANDOFF.md).
+- Supersedes all earlier GRSP-managed Resolver/Generator build directions in the historical entries below. **No managed resolver code migrated or deleted yet.** Existing `resolver/` and its managed CI remain pinned read-only migration references until GCO-local equivalence tests pass. Do not develop new REDscript passes in GRSP.
+- Verified historical baseline: [GRSP CI #61 SUCCESS](https://github.com/giorgioherma/GRSP-G-REDscript-Profiler/actions/runs/43794298639) (41/41 CLI tests), [GCO CI #482 SUCCESS](https://github.com/giorgioherma/Gs-Cyberpunk2077_Optimizations/actions/runs/43794814481) (2,319 files, SCC original and one-file optimized stacks, 323 GCO package contracts). No gameplay or measured performance improvement has been established. Stable GRSP `main` and v1.0.0 release are untouched.
+
+## Older dated development history (archived, superseded where ownership conflicts)
+
 ## 2026-11-15 — REDscript Resolver/Generator ownership and branch handoff
 
 - Repository branch `dev/resolver-profiler-handoff`, prior HEAD `ece5b8e2c65690bb914cc1f90b3c1bd79d740ef8`. Stable `main` (GRSP v1.0.0) untouched.
