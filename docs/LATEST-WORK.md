@@ -1,5 +1,13 @@
 # GRSP latest verified work
 
+## 2026-11-16 — real callback-reuse capture and frame-cap repair
+
+- **Real gameplay evidence:** user supplied `GCO-Capture-16112026_132224.zip` (384.516822 seconds). F11 explicit completion, 12/12 GRSP shards, frame quality GOOD, zero dropped spikes/hotpaths, 11,823 PresentMon frames and successful Restore. The new `Data/Developer/RSP_CallbackReuse.csv` includes 81 named read-like targets, approximately 5.0M recorded outgoing read edges across those filtered targets. Actual callback entries, arguments, receiver identity and cache safety remain unknown.
+- **Regression in new exporter identified from actual output:** 41/81 targets reported `TRUNCATED_NOT_ZERO_WORK`, with **95,096 dropped frame-row observations** because `callback_pressure.rs` imposed one global 200,000 frame-key budget across all targets. Example: `gameinputScriptListenerAction::GetType` measured 273,901 calls but retained just four active frames / 11,821 dropped frame observations; `gameuiCooldownGameController::GetDebuffs` measured 12,007 calls with zero frame coverage. Aggregate measured calls remain valid; dropped per-frame evidence is **incomplete, not zero repeated work**.
+- **Source-level fix** on this native-only branch: `ed038e78a9ef526e965059408db33d48fe5e5b08` performs *one target at a time* bounded post-F11 frame aggregation (65,536 frame identities **per target**, releases the map after each target); `6912dfa15fa36f8142afbbc0d76dca1428f2918b` adds Rust regression for per-target cap independence and per-frame multi-caller counting, `4df3d5847795ab42b5e6d01b1fc3bbade2000976` strengthens native source contracts. Existing VM hooks, runtime timing, callback order and safe F11 drain **unchanged**. Do not add corrective passes to dumped files; only rebuild source-owned DLL.
+- **CI:** native owner [#26](https://github.com/giorgioherma/GRSP-G-REDscript-Profiler/actions/runs/43870345597) was **in progress** at last observation, compilation and gameplay of repair not yet verified. Previous producer CI #23 was green but created the truncated output. Do not claim full frame coverage for the current capture.
+
+
 ## 2026-11-16 — callback reuse native instrumentation CI #23 SUCCESS
 
 - GRSP independent [native CI #23](https://github.com/giorgioherma/GRSP-G-REDscript-Profiler/actions/runs/43861198409), exact run `43861198409`, source `03542a8ebea04803d84afc20534b01f7246c0b0f`, **both jobs SUCCESS** (source Python contracts, actual Rust tests/cargo check and release `gco_explicit_f11` DLL build, PE writer markers, checksum and provenance). Artifact `GRSP-native-callback-instrumentation-03542a8ebea04803d84afc20534b01f7246c0b0f` (330,136 bytes), verified nonexpired with source/run identity.
