@@ -41,6 +41,11 @@ function Invoke-HeadlessScc {
   Set-Content -LiteralPath (Join-Path $IsolatedRoot '.grsp-r6-workspace') -Value 'GRSP_R6_ISOLATED_WORKSPACE' -NoNewline
   New-Item -ItemType Directory -Force -Path (Join-Path $r6 'logs') | Out-Null
   $args=@($dll,'scc-headless','--workspace',$IsolatedRoot,'--r6',$r6,'--cache',$cache,'--compiled',$compiled,'--scc-native',$CompilerLib,'--out',$report,'--log',$privateLog)
+  $externalScripts=Join-Path $IsolatedRoot 'red4ext/plugins/Codeware/Scripts'
+  if (Test-Path -LiteralPath $externalScripts -PathType Container) {
+    $args+=@('--external-scripts',$externalScripts)
+  }
+  $expectedExternalPaths=if (Test-Path -LiteralPath $externalScripts -PathType Container) { 1 } else { 0 }
   $info=[System.Diagnostics.ProcessStartInfo]::new('dotnet')
   $info.WorkingDirectory=Split-Path $dll -Parent
   $info.UseShellExecute=$false
@@ -68,7 +73,8 @@ function Invoke-HeadlessScc {
     $result=Get-Content -LiteralPath $report -Raw | ConvertFrom-Json -Depth 40
     if ($result.schemaVersion -ne 'grsp.scc.headless.v1' -or
         $result.guiErrorPopupDisabled -ne $true -or
-        $result.originalCacheUnchanged -ne $true) {
+        $result.originalCacheUnchanged -ne $true -or
+        [int]$result.externalScriptPaths -ne $expectedExternalPaths) {
       throw ('R6_HEADLESS_SCC_EVIDENCE_INVALID: phase='+$Phase)
     }
     if ($p.ExitCode -ne 0 -or $result.success -ne $true) {
@@ -229,7 +235,7 @@ try {
   }
   $cwRelative=@($cwFiles | ForEach-Object { [System.IO.Path]::GetRelativePath($cwScripts,$_.FullName) })
   $cwOriginalHashes=@($cwFiles | ForEach-Object { (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash })
-  Write-Host ('R6 Codeware external declarations admitted: files='+$cwFiles.Count+' provenance=PRIVATE_USER_ARCHIVE identicalInBothStacks=true')
+  Write-Host ('R6 Codeware external declarations admitted: files='+$cwFiles.Count+' provenance=PRIVATE_USER_ARCHIVE identicalInBothStacks=true viaOfficialSccAdditionalScriptPath=true')
   $outputs=@()
   foreach($scenario in @('untouched','optimized-preview')) {
     $root=Join-Path $work $scenario
@@ -240,7 +246,7 @@ try {
     foreach($item in @(Get-ChildItem -LiteralPath $liveSources -Force)) {
       Copy-Item -LiteralPath $item.FullName -Destination $scripts -Recurse -Force
     }
-    $cwStage=Join-Path $scripts '__GRSP_External_Codeware'
+    $cwStage=Join-Path $root 'red4ext/plugins/Codeware/Scripts'
     if (Test-Path -LiteralPath $cwStage) { throw 'R6_CODEWARE_STAGE_PATH_COLLISION' }
     New-Item -ItemType Directory -Path $cwStage -Force | Out-Null
     Copy-Item -Path (Join-Path $cwScripts '*') -Destination $cwStage -Recurse -Force
@@ -272,8 +278,11 @@ try {
       }
     }
     $actualCount=@(Get-ChildItem -LiteralPath $scripts -Recurse -File -Filter '*.reds').Count
-    if ($actualCount -ne ($liveCount+$cwFiles.Count)) {
-      throw 'R6 isolated compilation source count changed or Codeware scripts were omitted.'
+    if ($actualCount -ne $liveCount) {
+      throw 'R6 isolated base script source count changed.'
+    }
+    if (@(Get-ChildItem -LiteralPath $cwStage -Recurse -File -Filter '*.reds').Count -ne $cwFiles.Count) {
+      throw 'R6 external Codeware script path is incomplete.'
     }
     # Same direct native API proven by empty-source smoke, now complete
     # installed source tree. Explicit output path protects the vanilla cache.
